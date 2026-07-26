@@ -1,0 +1,8 @@
+{
+  "football": {
+    "game-footage": {"id": "1AT3L0w_xEISYTj_x51vl3IcoJ9T7Wo2X", "weight": 30, "content_mode": "highlight"},
+    "stock-footage": {"id": "15xhO0SrNjCnNde3Zne3GX55Y7uEFxxf3", "weight": 30, "content_mode": "simple"},
+    "own-footage": {"id": "1ygQRU60uiPYjtdoGYMhQasbeD_A0pc_O", "weight": 30, "content_mode": "simple"},
+    "broadcast-clips": {"id": "16wBFlCc7QuL2UNmb1TvLxv2J9_AU4qvt", "weight": 10, "content_mode": "highlight"}
+  }
+}
