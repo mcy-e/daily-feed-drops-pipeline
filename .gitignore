@@ -1,0 +1,7 @@
+client_secret_fc.json
+token_fc.json
+output/
+downloads/
+__pycache__/
+*.pyc
+.env
