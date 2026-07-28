@@ -1,0 +1,29 @@
+{
+  "schedules": {
+    "explained_topic": ["08:00", "14:00", "20:00"],
+    "kids_content": ["09:00", "15:00"],
+    "football_trivia": ["11:00", "17:00"],
+    "viral_news": ["07:00", "12:00", "18:00", "22:00"],
+    "quiz_riddle": ["10:00", "19:00"],
+    "meme_recap": ["13:00", "21:00"],
+    "motivation_content": ["06:00", "16:00"]
+  },
+  "manual_mode": {
+    "explained_topic": true,
+    "kids_content": true,
+    "football_trivia": true,
+    "viral_news": true,
+    "quiz_riddle": true,
+    "meme_recap": true,
+    "motivation_content": true
+  },
+  "privacy_status": {
+    "explained_topic": "private",
+    "kids_content": "private",
+    "football_trivia": "private",
+    "viral_news": "private",
+    "quiz_riddle": "private",
+    "meme_recap": "private",
+    "motivation_content": "private"
+  }
+}
