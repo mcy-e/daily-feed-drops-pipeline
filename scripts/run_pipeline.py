@@ -3,17 +3,16 @@ import logging
 import os
 import pathlib
 import random
+import datetime
+import argparse
 from dotenv import load_dotenv
 
-from scripts.constants import DRIVE_FOLDERS_CONFIG_PATH, DEFAULT_OUTPUT_DIR
-from scripts.db.clip_tracker import get_used_clip_ids, mark_clip_used
-from scripts.generators.football import (
-    get_service, pick_weighted_subfolder, download_file, find_companion_json,
-)
-from scripts.render.trim import smart_trim_analysis, simple_trim_analysis, curated_trim_analysis
+from scripts.constants import PROJECT_ROOT, DEFAULT_OUTPUT_DIR
+from scripts.generators.football import generate_football_content
+from scripts.render.trim import simple_trim_analysis
 from scripts.render.render import render_video
 from scripts.upload.youtube_upload import upload_video
-from scripts.notifications.telegram import send_message
+from scripts.notifications.telegram import send_message, send_video
 
 load_dotenv()
 
@@ -23,63 +22,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def _is_scheduled_time(scheduled_times: list[str], tolerance_minutes: int = 15) -> bool:
+    """Check if the current time matches any scheduled time within the tolerance."""
+    now = datetime.datetime.now()
+    current_minutes = now.hour * 60 + now.minute
+    
+    for t in scheduled_times:
+        try:
+            h, m = map(int, t.split(":"))
+            sched_minutes = h * 60 + m
+            diff = abs(current_minutes - sched_minutes)
+            
+            if diff <= tolerance_minutes or diff >= (24 * 60 - tolerance_minutes):
+                return True
+        except ValueError:
+            logger.warning("Invalid time format in schedule: %s", t)
+            
+    return False
+
 def main():
+    parser = argparse.ArgumentParser(description="Run the daily feed drops pipeline.")
+    parser.add_argument("--force", action="store_true", help="Bypass the schedule time check and run immediately.")
+    args = parser.parse_args()
+    
+    force_run = args.force or os.getenv("FORCE_RUN", "").lower() == "true"
+
     try:
         logger.info("Starting automated football pipeline run")
         
-        # 1. Drive Connection & File Selection
-        with open(DRIVE_FOLDERS_CONFIG_PATH, "r") as f:
-            folders = json.load(f)
-            
-        folder_config = folders.get("football")
-        if not folder_config or not isinstance(folder_config, dict):
-            raise ValueError("Football folder config missing or invalid in config")
-            
-        service = get_service()
-        file_meta = pick_weighted_subfolder(service, folder_config)
-        local_path = download_file(service, file_meta)
-        
-        video_id = file_meta["id"]
-        content_mode = file_meta.get("content_mode", "highlight")
-        
-        # 2. Curated-clip check (companion JSON on Drive)
-        folder_id = file_meta.get("_folder_id")
-        companion_path = None
-        if folder_id:
-            companion_path = find_companion_json(
-                service, folder_id, file_meta["name"]
-            )
-        
-        curated_clip = None
-        if companion_path:
-            curated_clip = _pick_unused_clip(companion_path, video_id)
-        
-        # 3. Trimming & Captions — branched by curated vs auto
-        if curated_clip:
-            start_time = curated_clip["start"]
-            end_time = curated_clip["end"]
-            mark_clip_used(video_id, curated_clip["id"])
-            logger.info("Using curated clip '%s': %.2fs -> %.2fs", curated_clip["id"], start_time, end_time)
-            
-            start_time, end_time, srt_path = curated_trim_analysis(
-                local_path, DEFAULT_OUTPUT_DIR, start_time, end_time
-            )
-        elif content_mode == "highlight":
-            start_time, end_time, srt_path = smart_trim_analysis(local_path, DEFAULT_OUTPUT_DIR)
+        # 1. Load config and check schedule
+        config_path = PROJECT_ROOT / "config" / "manager_config.json"
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                config = json.load(f)
         else:
-            start_time, end_time, srt_path = simple_trim_analysis(local_path)
+            logger.warning("No manager_config.json found. Proceeding with defaults.")
+            config = {"manual_mode": False, "schedules": {}}
+            
+        manual_mode = config.get("manual_mode", False)
+        football_schedules = config.get("schedules", {}).get("football", [])
+        
+        if football_schedules:
+            if force_run:
+                logger.info("Force run enabled. Bypassing schedule check for football.")
+            elif not _is_scheduled_time(football_schedules):
+                logger.info("Current time does not match any scheduled slots for football. Skipping execution.")
+                return
+        else:
+            logger.info("No schedule configured for football. Running immediately.")
+            
+        # 2. Generate AI content
+        local_path = generate_football_content()
+        
+        # 3. Trimming & Captions
+        start_time, end_time, srt_path, audio_path = simple_trim_analysis(local_path)
         
         # 4. Render (Pad, Blur, and conditionally Burn Subtitles)
-        output_path = render_video(local_path, DEFAULT_OUTPUT_DIR, start_time, end_time, srt_path)
+        output_path = render_video(local_path, DEFAULT_OUTPUT_DIR, start_time, end_time, srt_path, audio_path)
         
-        # 5. Upload to YouTube
-        title = f"Daily Football Highlight! ⚽🔥 #shorts #football"
+        # 5. Delivery based on manual_mode
+        title = "Daily Football Highlight! ⚽🔥 #shorts #football"
         description = "Check out this amazing football moment! Subscribe for daily highlights."
-        url = upload_video(output_path, title, description)
         
-        # 6. Notify Success
-        msg = f"✅ <b>Pipeline Success</b>\n\nVideo uploaded: {url}\nFile: {file_meta['name']}"
-        send_message(msg)
+        if manual_mode:
+            logger.info("Manual mode is ON. Sending video to Telegram directly.")
+            msg = f"⚽ <b>Manual Mode: Football Content</b>\n\nTitle: {title}"
+            send_video(output_path, msg)
+        else:
+            logger.info("Manual mode is OFF. Uploading to YouTube.")
+            url = upload_video(output_path, title, description)
+            msg = f"✅ <b>Pipeline Success</b>\n\nVideo uploaded: {url}\nType: Football\nTitle: {title}"
+            send_message(msg)
+            
         logger.info("Pipeline run complete.")
         
     except Exception as exc:
@@ -87,34 +101,6 @@ def main():
         msg = f"❌ <b>Pipeline Failed</b>\n\nError: <code>{exc}</code>"
         send_message(msg)
         raise
-
-
-def _pick_unused_clip(companion_path: str, video_id: str) -> dict | None:
-    """Load the companion JSON, exclude already-used clips, pick one at random."""
-    try:
-        with open(companion_path, "r") as f:
-            data = json.load(f)
-        
-        clips = data.get("clips", [])
-        if not clips:
-            logger.info("Companion JSON has no clips array")
-            return None
-        
-        used_ids = get_used_clip_ids(video_id)
-        available = [c for c in clips if c.get("id") not in used_ids]
-        
-        if not available:
-            logger.info("All %d clips already used for video %s, falling back to auto-detection", len(clips), video_id)
-            return None
-        
-        chosen = random.choice(available)
-        logger.info("Selected curated clip '%s' (%d available, %d used)", chosen["id"], len(available), len(used_ids))
-        return chosen
-        
-    except Exception as exc:
-        logger.warning("Failed to parse companion JSON: %s. Falling back to auto-detection.", exc)
-        return None
-
 
 if __name__ == "__main__":
     main()

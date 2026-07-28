@@ -14,8 +14,11 @@ from scripts.constants import (
     EXCITEMENT_KEYWORDS,
     WINDOW_DURATION_SECONDS,
     WINDOW_LEAD_SECONDS,
+    COMMENTARY_ENABLED,
 )
 from scripts.render.render import probe_video
+from scripts.commentary.generate_commentary import generate_commentary
+from scripts.commentary.tts import generate_tts
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +121,11 @@ def write_srt(result: dict, start_offset: float, output_path: str):
             f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
 
 
-def smart_trim_analysis(input_path: str | pathlib.Path, output_dir: str | pathlib.Path) -> tuple[float, float, str]:
+def smart_trim_analysis(input_path: str | pathlib.Path, output_dir: str | pathlib.Path) -> tuple[float, float, str, str | None]:
     """
     Find best 20s window, run Whisper, generate SRT.
-    Returns (start_time, end_time, srt_path)
+    If commentary is enabled, generates TTS audio and VTT instead.
+    Returns (start_time, end_time, srt_path, audio_path)
     """
     input_path = pathlib.Path(input_path)
     output_dir = pathlib.Path(output_dir)
@@ -179,11 +183,24 @@ def smart_trim_analysis(input_path: str | pathlib.Path, output_dir: str | pathli
         
     write_srt(best_result, start_offset=0, output_path=str(srt_path))
     logger.info("Generated subtitles at %s", srt_path.name)
+    
+    audio_path = None
+    if COMMENTARY_ENABLED and best_result and best_result.get("text"):
+        try:
+            logger.info("Generating AI commentary...")
+            commentary_text = generate_commentary(best_result["text"])
+            output_base = output_dir / input_path.stem
+            new_audio_path, vtt_path = generate_tts(commentary_text, str(output_base))
+            srt_path = pathlib.Path(vtt_path)
+            audio_path = new_audio_path
+            logger.info("Replaced original audio/subtitles with AI commentary.")
+        except Exception as exc:
+            logger.error("Commentary generation failed, falling back to original audio: %s", exc)
 
-    return start_time, end_time, str(srt_path)
+    return start_time, end_time, str(srt_path), audio_path
 
 
-def simple_trim_analysis(input_path: str | pathlib.Path) -> tuple[float, float, None]:
+def simple_trim_analysis(input_path: str | pathlib.Path) -> tuple[float, float, None, None]:
     """
     Simple fallback that takes a random 15-20s segment without generating captions or detecting peaks.
     Used for stock/own footage.
@@ -202,7 +219,7 @@ def simple_trim_analysis(input_path: str | pathlib.Path) -> tuple[float, float, 
         end_time = start_time + WINDOW_DURATION_SECONDS
         
     logger.info("Simple trim selected window: %.2fs -> %.2fs", start_time, end_time)
-    return start_time, end_time, None
+    return start_time, end_time, None, None
 
 
 def curated_trim_analysis(
@@ -210,7 +227,7 @@ def curated_trim_analysis(
     output_dir: str | pathlib.Path,
     start_time: float,
     end_time: float,
-) -> tuple[float, float, str]:
+) -> tuple[float, float, str, str | None]:
     """
     Generate captions for a fixed curated window by transcribing just that segment.
     Skips peak detection entirely — timestamps are provided by the companion JSON.
@@ -233,5 +250,18 @@ def curated_trim_analysis(
     srt_path = output_dir / f"{input_path.stem}.srt"
     write_srt(result, start_offset=0, output_path=str(srt_path))
     logger.info("Generated curated subtitles at %s", srt_path.name)
+    
+    audio_path = None
+    if COMMENTARY_ENABLED and result and result.get("text"):
+        try:
+            logger.info("Generating AI commentary for curated clip...")
+            commentary_text = generate_commentary(result["text"])
+            output_base = output_dir / input_path.stem
+            new_audio_path, vtt_path = generate_tts(commentary_text, str(output_base))
+            srt_path = pathlib.Path(vtt_path)
+            audio_path = new_audio_path
+            logger.info("Replaced original audio/subtitles with AI commentary.")
+        except Exception as exc:
+            logger.error("Commentary generation failed, falling back to original audio: %s", exc)
 
-    return start_time, end_time, str(srt_path)
+    return start_time, end_time, str(srt_path), audio_path

@@ -109,6 +109,7 @@ def render_video(
     start_time: float = None,
     end_time: float = None,
     srt_path: str = None,
+    audio_path: str = None,
 ) -> str:
     """Render a video to 9:16 with blurred-background padding. Returns output path."""
     input_path = pathlib.Path(input_path)
@@ -129,6 +130,14 @@ def render_video(
         
     cmd.extend([
         "-i", str(input_path),
+    ])
+    
+    if audio_path:
+        cmd.extend(["-i", str(audio_path)])
+        # Map video from input 0, audio from input 1
+        cmd.extend(["-map", "0:v:0", "-map", "1:a:0"])
+        
+    cmd.extend([
         "-vf", filter_graph,
         "-c:v", "libx264",
         "-preset", FFMPEG_PRESET,
