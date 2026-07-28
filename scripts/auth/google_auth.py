@@ -11,8 +11,15 @@ from scripts.constants import (
     DEFAULT_TOKEN_PATH,
     DRIVE_READONLY_SCOPES,
 )
+from scripts.utils.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+
+@retry_with_backoff(max_retries=3, delays=(2, 5, 10))
+def _refresh_credentials(credentials: Credentials) -> None:
+    """Refresh credentials with retry backoff for transient network issues."""
+    credentials.refresh(Request())
 
 
 def get_credentials(
@@ -37,7 +44,7 @@ def get_credentials(
 
         if credentials and credentials.expired and credentials.refresh_token:
             logger.info("Refreshing expired credentials")
-            credentials.refresh(Request())
+            _refresh_credentials(credentials)
             _save_token(credentials, token_path)
 
         if not credentials or not credentials.valid:
