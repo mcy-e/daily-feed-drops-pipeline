@@ -18,7 +18,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
         },
         {
           "id": 2,
@@ -33,7 +33,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
         },
         {
           "id": 3,
@@ -48,7 +48,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
         },
         {
           "id": 4,
@@ -63,7 +63,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
         },
         {
           "id": 5,
@@ -78,7 +78,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
         },
         {
           "id": 6,
@@ -93,7 +93,22 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 16.666666666666668
+          "weight": 14.285714285714286
+        },
+        {
+          "id": 7,
+          "name": "explained_topic",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [
+            "18:00"
+          ],
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 14.285714285714286
         }
       ]
     }
