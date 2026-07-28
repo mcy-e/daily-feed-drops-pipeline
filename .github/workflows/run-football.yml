@@ -2,7 +2,7 @@ name: Run Football Pipeline
 
 on:
   schedule:
-    - cron: '0 12,18 * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -36,14 +36,15 @@ jobs:
           TOKEN_B64: ${{ secrets.GOOGLE_OAUTH_TOKEN_B64 }}
         run: |
           mkdir -p config
-          echo "$CLIENT_SECRET_B64" | base64 --decode > config/client_secret_fc.json
-          echo "$TOKEN_B64" | base64 --decode > config/token_fc.json
+          echo "$CLIENT_SECRET_B64" | base64 --decode > config/client_secret_v2.json
+          echo "$TOKEN_B64" | base64 --decode > config/token_v2.json
 
       - name: Run Pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           YOUTUBE_PRIVACY_STATUS: ${{ env.YOUTUBE_PRIVACY_STATUS || 'private' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python -m scripts.run_pipeline
 
