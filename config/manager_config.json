@@ -18,7 +18,7 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 50.0
+          "weight": 33.333333333333336
         },
         {
           "id": 2,
@@ -33,7 +33,22 @@
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 50.0
+          "weight": 33.333333333333336
+        },
+        {
+          "id": 3,
+          "name": "quiz_riddle",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [
+            "6:00"
+          ],
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 33.333333333333336
         }
       ]
     }
