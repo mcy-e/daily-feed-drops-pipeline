@@ -5,12 +5,18 @@ import random
 import re
 
 from google import genai
+import groq as groq_sdk
+from openai import OpenAI
 
 from scripts.constants import (
     CONTENT_TOPIC_POOLS,
     CONTENT_TYPES,
     GEMINI_API_KEY_ENV_VAR,
     GEMINI_TEXT_MODEL,
+    GROQ_API_KEY_ENV_VAR,
+    GROQ_MODEL,
+    OPENROUTER_API_KEY_ENV_VAR,
+    OPENROUTER_MODEL,
 )
 from scripts.generators.news_fetcher import fetch_current_headline
 
@@ -108,12 +114,11 @@ Requirements:
 
 
 def _parse_json_response(text: str) -> dict:
-    """Extract and parse JSON from Gemini response, tolerating markdown fences."""
+    """Extract and parse JSON from a model response, tolerating markdown fences."""
     cleaned = text.strip()
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
     if fence_match:
         cleaned = fence_match.group(1)
-
     return json.loads(cleaned)
 
 
@@ -148,18 +153,77 @@ def _validate_script(script: dict, content_type: str) -> dict:
     return script
 
 
-def generate_script(content_type: str) -> dict:
-    """Generate a structured video script via Gemini for the given content type."""
-    if content_type not in CONTENT_TYPES:
-        raise ValueError(f"Unknown content type: {content_type}")
-    if content_type == "meme_recap":
-        raise ValueError("meme_recap uses meme_fetcher, not content_gen")
-
+def _generate_with_gemini(full_prompt: str) -> str:
+    """Call Gemini API and return raw text response."""
     api_key = os.getenv(GEMINI_API_KEY_ENV_VAR)
     if not api_key:
         raise ValueError(f"{GEMINI_API_KEY_ENV_VAR} is not set")
 
     client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=GEMINI_TEXT_MODEL,
+        contents=full_prompt,
+    )
+    return response.text
+
+
+def _generate_with_groq(full_prompt: str) -> str:
+    """Call Groq API using the official SDK and return raw text response."""
+    api_key = os.getenv(GROQ_API_KEY_ENV_VAR)
+    if not api_key:
+        raise ValueError(f"{GROQ_API_KEY_ENV_VAR} is not set")
+
+    client = groq_sdk.Groq(api_key=api_key)
+    completion = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": full_prompt}],
+        temperature=0.7,
+    )
+    return completion.choices[0].message.content
+
+
+def _generate_with_openrouter(full_prompt: str) -> str:
+    """Call OpenRouter API via the OpenAI-compatible SDK and return raw text response."""
+    api_key = os.getenv(OPENROUTER_API_KEY_ENV_VAR)
+    if not api_key:
+        raise ValueError(f"{OPENROUTER_API_KEY_ENV_VAR} is not set")
+
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    completion = client.chat.completions.create(
+        model=OPENROUTER_MODEL,
+        messages=[{"role": "user", "content": full_prompt}],
+        temperature=0.7,
+    )
+    return completion.choices[0].message.content
+
+
+_PROVIDER_CHAIN = [
+    ("Gemini", _generate_with_gemini),
+    ("Groq", _generate_with_groq),
+    ("OpenRouter", _generate_with_openrouter),
+]
+
+_QUOTA_ERRORS = (
+    "quota", "rate", "limit", "429", "resource exhausted",
+    "too many requests", "insufficient_quota",
+)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a quota or rate-limit error."""
+    msg = str(exc).lower()
+    return any(kw in msg for kw in _QUOTA_ERRORS)
+
+
+def generate_script(content_type: str) -> dict:
+    """Generate a structured video script via LLM with Gemini → Groq → OpenRouter fallback."""
+    if content_type not in CONTENT_TYPES:
+        raise ValueError(f"Unknown content type: {content_type}")
+    if content_type == "meme_recap":
+        raise ValueError("meme_recap uses meme_fetcher, not content_gen")
 
     if content_type == "viral_news":
         subcategory, headline = fetch_current_headline()
@@ -177,12 +241,32 @@ Return ONLY valid JSON matching this schema (no markdown, no commentary):
 {SCRIPT_SCHEMA}"""
 
     logger.info("Generating script for content type: %s", content_type)
-    response = client.models.generate_content(
-        model=GEMINI_TEXT_MODEL,
-        contents=full_prompt,
-    )
 
-    script = _parse_json_response(response.text)
-    script = _validate_script(script, content_type)
-    logger.info("Generated script: %s (%d segments)", script["title"], len(script["segments"]))
-    return script
+    last_exc = None
+    for provider_name, provider_fn in _PROVIDER_CHAIN:
+        try:
+            logger.info("Trying provider: %s", provider_name)
+            raw = provider_fn(full_prompt)
+            script = _parse_json_response(raw)
+            script = _validate_script(script, content_type)
+            script["provider"] = provider_name
+            logger.info("Script generated via %s: '%s' (%d segments)", provider_name, script["title"], len(script["segments"]))
+            return script
+        except genai.errors.APIError as exc:
+            last_exc = exc
+            if getattr(exc, 'code', None) == 429 or _is_quota_error(exc):
+                logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+            else:
+                logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                raise
+        except Exception as exc:
+            last_exc = exc
+            if _is_quota_error(exc):
+                logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+            else:
+                logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                raise
+
+    raise RuntimeError(
+        f"All LLM providers failed for content type '{content_type}'. Last error: {last_exc}"
+    ) from last_exc

@@ -14,13 +14,20 @@ from scripts.generators.image_fetcher import fetch_pexels_image
 from scripts.generators.meme_fetcher import fetch_meme_script
 from scripts.manim_scenes.scene_builder import render_all_segments
 from scripts.notifications.telegram import send_message, send_video
-from scripts.pipelines.schedule import is_scheduled_time, load_manager_config
+from scripts.pipelines.schedule import load_manager_config, should_run_for_schedule
 from scripts.render.assemble import assemble_video
 from scripts.render.render import render_video
 from scripts.render.segment_audio import generate_all_segment_audio
-from scripts.upload.youtube_upload import upload_video
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_root_temp() -> None:
+    """Delete and recreate the root temp directory at pipeline start."""
+    if DEFAULT_TEMP_DIR.exists():
+        shutil.rmtree(DEFAULT_TEMP_DIR)
+    DEFAULT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info("Cleaned temp directory: %s", DEFAULT_TEMP_DIR)
 
 
 def _cleanup_temp_dir(run_dir: pathlib.Path) -> None:
@@ -58,15 +65,10 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
     config = load_manager_config()
     type_config = _get_content_config(config, content_type)
 
-    schedules = type_config["schedules"]
-    if schedules and not force:
-        if not is_scheduled_time(schedules):
-            logger.info(
-                "Current time does not match schedule for %s. Skipping.", content_type
-            )
-            return
-    elif force:
-        logger.info("Force run enabled for %s.", content_type)
+    if not should_run_for_schedule(content_type, config=config, force=force):
+        return
+
+    _cleanup_root_temp()
 
     run_id = uuid.uuid4().hex[:8]
     run_dir = DEFAULT_TEMP_DIR / content_type / run_id
@@ -125,6 +127,8 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
             caption = f"🎬 <b>{content_type.replace('_', ' ').title()}</b>\n\n{title}"
             send_video(final_path, caption)
         else:
+            from scripts.upload.youtube_upload import upload_video
+
             logger.info("Manual mode OFF for %s — uploading to YouTube.", content_type)
             url = upload_video(
                 final_path, title, description,

@@ -2,15 +2,15 @@ name: Run Content Pipeline
 
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    # Runs every hour - each content type checks its own schedule window internally
+    - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       content_type:
-        description: 'Content type to generate (leave empty to check all schedules)'
-        required: false
+        description: 'Content type to generate'
+        required: true
         type: choice
         options:
-          - ''
           - explained_topic
           - kids_content
           - football_trivia
@@ -22,7 +22,7 @@ on:
         description: 'Force run (bypass schedule check)'
         required: false
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -40,7 +40,7 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install system dependencies (FFmpeg, Manim)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -67,40 +67,32 @@ jobs:
           echo "$CLIENT_SECRET_B64" | base64 --decode > config/client_secret_v2.json
           echo "$TOKEN_B64" | base64 --decode > config/token_v2.json
 
-      - name: Run content pipeline (single type)
-        if: github.event_name == 'workflow_dispatch' && inputs.content_type != ''
+      - name: Run content pipeline (manual dispatch - single type)
+        if: github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
-          FORCE_RUN: ${{ inputs.force && 'true' || '' }}
         run: |
           python -m scripts.run_content_pipeline \
             --type "${{ inputs.content_type }}" \
             ${{ inputs.force && '--force' || '' }}
 
-      - name: Run content pipeline (check all schedules)
-        if: inputs.content_type == '' && github.event_name == 'schedule'
+      - name: Run content pipeline (scheduled - check all types against their slots)
+        if: github.event_name == 'schedule'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         run: |
           for type in explained_topic kids_content football_trivia viral_news quiz_riddle meme_recap motivation_content; do
             python -m scripts.run_content_pipeline --type "$type" || true
           done
-
-      - name: Run content pipeline (workflow_dispatch, all types)
-        if: inputs.content_type == '' && github.event_name == 'workflow_dispatch'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
-        run: |
-          echo "No content_type specified. Use the content_type input to trigger a specific type."
