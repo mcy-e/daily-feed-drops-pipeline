@@ -40,6 +40,14 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/share/swift
+          df -h
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
