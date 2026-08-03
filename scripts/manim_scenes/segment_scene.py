@@ -104,7 +104,10 @@ class SegmentScene(Scene):
             return stat_text
 
         if visual_type == "list":
-            items = visual_content.split("\n") if "\n" in visual_content else visual_content.split("|")
+            if isinstance(visual_content, list):
+                items = [str(i) for i in visual_content]
+            else:
+                items = visual_content.split("\n") if "\n" in visual_content else visual_content.split("|")
             items = [i.strip().lstrip("•- ") for i in items if i.strip()]
             texts = [Text(f"• {item}", font=font, color=text_color, font_size=36) for item in items]
             group = VGroup(*texts).arrange(DOWN, aligned_edge=LEFT, buff=0.4)
