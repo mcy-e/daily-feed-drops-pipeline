@@ -7,14 +7,34 @@ from scripts.constants import CONTENT_TYPES, MANAGER_CONFIG_PATH, SCHEDULE_TOLER
 logger = logging.getLogger(__name__)
 
 
+def _normalize_channels_format(raw: dict) -> dict:
+    """Convert the manager's channels-based config into the flat format the pipeline expects."""
+    normalized: dict = {"schedules": {}, "manual_mode": {}, "privacy_status": {}}
+    for channel in raw.get("channels", []):
+        for ct in channel.get("content_types", []):
+            name = ct.get("name")
+            if not name:
+                continue
+            normalized["schedules"][name] = ct.get("schedule", [])
+            normalized["manual_mode"][name] = ct.get("mode", "automatic") == "manual"
+            normalized["privacy_status"][name] = ct.get("privacy_status", "private")
+    return normalized
+
+
 def load_manager_config() -> dict:
-    """Load manager_config.json, returning empty defaults if missing."""
+    """Load manager_config.json and normalize it to the flat pipeline format."""
     if not MANAGER_CONFIG_PATH.exists():
         logger.warning("No manager_config.json found at %s", MANAGER_CONFIG_PATH)
         return {"schedules": {}, "manual_mode": {}, "privacy_status": {}}
 
     with open(MANAGER_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        raw = json.load(f)
+
+    if "channels" in raw:
+        logger.info("Detected manager channels format — normalizing config.")
+        return _normalize_channels_format(raw)
+
+    return raw
 
 
 def _schedule_slots_for_type(config: dict, content_type: str) -> list[str]:
