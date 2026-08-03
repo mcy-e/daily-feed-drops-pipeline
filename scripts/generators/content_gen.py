@@ -114,12 +114,18 @@ Requirements:
 
 
 def _parse_json_response(text: str) -> dict:
-    """Extract and parse JSON from a model response, tolerating markdown fences."""
+    """Extract and parse JSON from a model response, tolerating markdown fences and raw control chars."""
     cleaned = text.strip()
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
     if fence_match:
         cleaned = fence_match.group(1)
-    return json.loads(cleaned)
+    
+    try:
+        return json.loads(cleaned, strict=False)
+    except json.JSONDecodeError:
+        # Fallback for severe escaping issues: try to strip raw newlines within strings
+        cleaned = re.sub(r'([^\\])\n', r'\1\\n', cleaned)
+        return json.loads(cleaned, strict=False)
 
 
 def _validate_script(script: dict, content_type: str) -> dict:
