@@ -122,7 +122,7 @@ GNEWS_API_KEY_ENV_VAR = "GNEWS_API_KEY"
 
 GEMINI_TEXT_MODEL = "gemini-2.0-flash"
 GROQ_MODEL = "llama-3.1-8b-instant"
-OPENROUTER_MODEL = "meta-llama/llama-3-8b-instruct:free"
+OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
 TTS_VOICE = "en-US-ChristopherNeural"
 
 SCHEDULE_TOLERANCE_MINUTES = 15
