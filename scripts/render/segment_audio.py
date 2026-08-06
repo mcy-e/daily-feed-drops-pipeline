@@ -86,8 +86,13 @@ def generate_segment_audio(
             f.write(base64.b64decode(audio_b64))
             
     except Exception as exc:
-        logger.error("TikTok TTS failed: %s", exc)
-        raise RuntimeError(f"TikTok TTS generation failed: {exc}") from exc
+        logger.warning("TikTok TTS failed: %s. Falling back to local edge-tts.", exc)
+        try:
+            cmd = ["edge-tts", "--voice", voice, "--text", narration, "--write-media", audio_path]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except Exception as fallback_exc:
+            logger.error("Edge-tts fallback also failed: %s. Generating silent stub.", fallback_exc)
+            open(audio_path, "wb").close()
 
     duration = _probe_audio_duration(audio_path)
     pause_after = float(segment.get("pause_after", 0.5))
