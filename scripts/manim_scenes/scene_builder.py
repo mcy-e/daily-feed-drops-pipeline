@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 VOICE_ENABLED_TYPES = {"meme_recap", "explained_topic", "quiz_riddle"}
 
 # Reading speed fallback: words per second when no voice
-READING_WORDS_PER_SECOND = 3.2
-MIN_SEGMENT_DURATION = 3.0
+READING_WORDS_PER_SECOND = 2.2
+MIN_SEGMENT_DURATION = 4.0
 
 
 def _reading_duration(text: str) -> float:

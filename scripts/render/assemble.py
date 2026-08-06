@@ -10,25 +10,29 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
-# Royalty-free loopable nature ambient audio (birds + stream)
-AMBIENT_AUDIO_URL = "https://cdn.freesound.org/previews/456/456471_5121236-lq.mp3"
-AMBIENT_FALLBACK_URL = "https://cdn.freesound.org/previews/398/398720_5121236-lq.mp3"
 AMBIENT_VOLUME = "0.18"
 
-
-def _download_ambient(dest: pathlib.Path) -> str | None:
-    """Download a royalty-free ambient nature sound. Returns path or None on failure."""
+def _generate_ambient(dest: pathlib.Path) -> str | None:
+    """Generate continuous non-repeating nature ambient sound (wind/water) using FFmpeg noise."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    for url in (AMBIENT_AUDIO_URL, AMBIENT_FALLBACK_URL):
-        try:
-            resp = requests.get(url, timeout=20, verify=False)
-            resp.raise_for_status()
-            dest.write_bytes(resp.content)
-            logger.info("Ambient audio downloaded: %s", dest)
-            return str(dest)
-        except Exception as exc:
-            logger.warning("Ambient audio download failed from %s: %s", url, exc)
-    return None
+    out_path = str(dest)
+    # Pink noise + Brown noise mixed together creates a very convincing continuous river/wind sound
+    cmd = [
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i", "anoisesrc=c=brown:r=44100:a=0.15",
+        "-i", "anoisesrc=c=pink:r=44100:a=0.08",
+        "-filter_complex", "amix=inputs=2:duration=first",
+        "-t", "120",  # Generate 2 minutes max
+        "-c:a", "aac",
+        out_path,
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        logger.info("Continuous ambient audio generated: %s", out_path)
+        return out_path
+    except Exception as exc:
+        logger.warning("Ambient generation failed: %s", exc)
+        return None
 
 
 def _get_segment_duration(audio_meta: dict) -> float:
@@ -172,7 +176,7 @@ def assemble_video(
     """Composite image cards onto B-Roll with ambient audio, then concatenate. Returns final video path."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    ambient_path = _download_ambient(output_dir / "ambient.mp3")
+    ambient_path = _generate_ambient(output_dir / "ambient.aac")
 
     composited_paths = []
     for video, audio_meta in zip(segment_videos, segment_audios):

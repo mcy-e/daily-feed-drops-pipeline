@@ -16,7 +16,7 @@ def _normalize_channels_format(raw: dict) -> dict:
             if not name:
                 continue
             normalized["schedules"][name] = ct.get("schedule", [])
-            normalized["manual_mode"][name] = ct.get("mode", "automatic") == "manual"
+            normalized["manual_mode"][name] = str(ct.get("mode", "automatic")).lower() == "manual"
             normalized["privacy_status"][name] = ct.get("privacy_status", "private")
     return normalized
 

@@ -61,18 +61,30 @@ def _derive_image_query(segment: dict, content_type: str) -> str:
 
 
 def _fetch_all_segment_images(script: dict, content_type: str, images_dir: pathlib.Path) -> None:
-    """Download a real Pexels image for every segment. Segments become image overlays over B-Roll."""
+    """Download a real Pexels image for the first segment and re-use it for all subsequent segments.
+    This creates a single static image holding position over the B-Roll for the whole video."""
+    first_image_path = None
     for segment in script["segments"]:
         # Skip segments that already have an image (e.g. meme images or news images)
         if segment.get("image_path") and pathlib.Path(segment["image_path"]).exists():
             segment["visual_type"] = "image"
+            if not first_image_path:
+                first_image_path = segment["image_path"]
             continue
+
+        if first_image_path:
+            # Re-use the same image to keep the background static while text updates
+            segment["image_path"] = first_image_path
+            segment["visual_type"] = "image"
+            continue
+
         query = _derive_image_query(segment, content_type)
         try:
             image_path = fetch_pexels_image(query, images_dir)
             segment["image_path"] = image_path
             segment["visual_type"] = "image"
-            logger.info("Fetched image for segment %d: query='%s'", segment["id"], query)
+            first_image_path = image_path
+            logger.info("Fetched static image for video: query='%s'", query)
         except Exception as exc:
             logger.warning("Could not fetch image for segment %d ('%s'): %s — keeping text card", segment["id"], query, exc)
 
