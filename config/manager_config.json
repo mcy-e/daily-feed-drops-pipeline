@@ -6,21 +6,6 @@
       "platform": "youtube",
       "content_types": [
         {
-          "id": 1,
-          "name": "motivation_content",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "3:00"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
           "id": 2,
           "name": "meme_recap",
           "api_key": null,
@@ -81,21 +66,6 @@
           "weight": 14.285714285714286
         },
         {
-          "id": 6,
-          "name": "kids_content",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "9:00"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
           "id": 7,
           "name": "explained_topic",
           "api_key": null,
@@ -105,6 +75,36 @@
           "github_workflow": "run-content.yml",
           "schedule": [
             "18:00"
+          ],
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 14.285714285714286
+        },
+        {
+          "id": 8,
+          "name": "dark_facts",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [
+            "03:17"
+          ],
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 14.285714285714286
+        },
+        {
+          "id": 9,
+          "name": "would_you_rather",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [
+            "20:00"
           ],
           "mode": "manual",
           "privacy_status": "private",
