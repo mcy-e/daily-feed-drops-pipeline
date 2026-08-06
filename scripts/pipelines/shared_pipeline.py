@@ -3,7 +3,7 @@ import logging
 import pathlib
 import random
 
-from scripts.constants import CHANNELS, CONTENT_TYPES, TEMP_DIR, MANAGER_CONFIG_PATH
+from scripts.constants import CONTENT_TYPES, TEMP_DIR, MANAGER_CONFIG_PATH
 from scripts.generators.broll_fetcher import fetch_aesthetic_broll
 from scripts.generators.content_gen import generate_script
 from scripts.generators.pexels_fetcher import fetch_pexels_image

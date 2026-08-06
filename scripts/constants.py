@@ -8,6 +8,12 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 DEFAULT_DOWNLOAD_DIR = PROJECT_ROOT / "downloads"
 DRIVE_FOLDERS_CONFIG_PATH = PROJECT_ROOT / "config" / "drive_folders.json"
 
+# Shared pipeline temp/output directory
+TEMP_DIR = PROJECT_ROOT / "temp"
+
+# Legacy alias kept for backwards compatibility
+CHANNELS: list = []
+
 DEFAULT_API_PORT = 8001
 
 DRIVE_READONLY_SCOPES = [
