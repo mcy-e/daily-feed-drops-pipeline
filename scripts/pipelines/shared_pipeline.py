@@ -4,7 +4,6 @@ import pathlib
 import shutil
 import uuid
 import requests
-import subprocess
 
 from scripts.constants import (
     CONTENT_TYPES,
@@ -94,7 +93,22 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
         script_path.write_text(json.dumps(script, indent=2), encoding="utf-8")
         logger.info("Script saved: %s", script_path)
 
-        # 2. Fetch images for image_needed segments
+        # 2. Fetch images for image_needed segments, and handle news image
+        news_image_url = script.get("news_image_url")
+        if news_image_url and script["segments"]:
+            logger.info("Downloading GNews image for foreground overlay: %s", news_image_url)
+            try:
+                img_path = images_dir / "news_img.jpg"
+                resp = requests.get(news_image_url, timeout=30, verify=False)
+                resp.raise_for_status()
+                with open(img_path, "wb") as f:
+                    f.write(resp.content)
+                # Inject it into the first segment so it appears like a meme overlay
+                script["segments"][0]["visual_type"] = "image"
+                script["segments"][0]["image_path"] = str(img_path)
+            except Exception as e:
+                logger.warning("Failed to download news image: %s", e)
+
         _fetch_segment_images(script, images_dir)
 
         # 3. Generate TTS per segment
@@ -105,42 +119,13 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
             script["segments"], content_type, segments_audio, manim_dir
         )
 
-        # 5. Fetch satisfying B-Roll background OR use News Image
+        # 5. Fetch satisfying B-Roll background
         broll_path = None
-        news_image_url = script.get("news_image_url")
-        if news_image_url:
-            logger.info("Using GNews image as background: %s", news_image_url)
-            try:
-                img_path = images_dir / "news_bg.jpg"
-                resp = requests.get(news_image_url, timeout=30, verify=False)
-                resp.raise_for_status()
-                with open(img_path, "wb") as f:
-                    f.write(resp.content)
-                
-                bg_video_path = str(run_dir / "broll" / "news_bg.mov")
-                (run_dir / "broll").mkdir(exist_ok=True)
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-loop", "1",
-                    "-i", str(img_path),
-                    "-t", "60",
-                    "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,gblur=sigma=30",
-                    "-c:v", "libx264",
-                    "-pix_fmt", "yuv420p",
-                    "-r", "30",
-                    bg_video_path,
-                ]
-                subprocess.run(cmd, capture_output=True, text=True, check=True)
-                broll_path = bg_video_path
-            except Exception as e:
-                logger.warning("Failed to generate news background, falling back to Pexels: %s", e)
-
-        if not broll_path:
-            try:
-                broll_path = fetch_aesthetic_broll(run_dir / "broll")
-                logger.info("B-Roll fetched: %s", broll_path)
-            except Exception as broll_exc:
-                logger.warning("B-Roll fetch failed (%s) — falling back to blur-pad", broll_exc)
+        try:
+            broll_path = fetch_aesthetic_broll(run_dir / "broll")
+            logger.info("B-Roll fetched: %s", broll_path)
+        except Exception as broll_exc:
+            logger.warning("B-Roll fetch failed (%s) — falling back to blur-pad", broll_exc)
 
         # 6. Composite Manim onto B-Roll per segment, then concatenate
         final_path = assemble_video(
