@@ -6,13 +6,14 @@ import random
 from scripts.constants import CONTENT_TYPES, TEMP_DIR, MANAGER_CONFIG_PATH
 from scripts.generators.broll_fetcher import fetch_aesthetic_broll
 from scripts.generators.content_gen import generate_script
-from scripts.generators.pexels_fetcher import fetch_pexels_image
+from scripts.generators.image_fetcher import fetch_pexels_image
+from scripts.generators.meme_fetcher import fetch_meme_script
 from scripts.pipelines.schedule import is_scheduled_time, load_manager_config
 from scripts.render.assemble import assemble_video
-from scripts.render.segment_audio import generate_all_audio
+from scripts.render.segment_audio import generate_all_segment_audio
 from scripts.manim_scenes.scene_builder import render_all_segments
-from scripts.uploaders.telegram_bot import send_to_telegram
-from scripts.uploaders.youtube_uploader import upload_video
+from scripts.notifications.telegram import send_video as telegram_send_video
+from scripts.upload.youtube_upload import upload_video
 
 logger = logging.getLogger(__name__)
 
@@ -122,28 +123,11 @@ def run_content_pipeline(content_type: str, force: bool = False):
         # 1. Generate Script
         logger.info("Stage 1: Generating Script")
         if content_type == "meme_recap":
-            from scripts.generators.meme_gen import get_latest_memes
-            memes = get_latest_memes()
-            if not memes:
+            meme_script = fetch_meme_script()
+            if not meme_script:
                 logger.warning("No memes found. Aborting.")
                 return
-            # Use only one meme for a 7-second short as requested
-            meme = random.choice(memes)
-            script = {
-                "title": "Meme Recap",
-                "description": "Daily meme drop!",
-                "tags": ["memes", "funny"],
-                "segments": [
-                    {
-                        "id": 1,
-                        "narration": meme.get("title", "Funny meme"),
-                        "visual_type": "image",
-                        "visual_content": meme.get("title", ""),
-                        "image_path": meme["image_path"],
-                        "image_needed": True
-                    }
-                ]
-            }
+            script = meme_script
         else:
             script = generate_script(content_type)
 
@@ -157,7 +141,7 @@ def run_content_pipeline(content_type: str, force: bool = False):
 
         # 4. Generate TTS & Audio
         logger.info("Stage 4: Generating Audio")
-        segments_audio = generate_all_audio(script["segments"], content_type, audio_dir)
+        segments_audio = generate_all_segment_audio(script["segments"], content_type, audio_dir)
 
         # 5. Render individual video segments (Manim/PIL)
         logger.info("Stage 5: Rendering Video Segments")
@@ -178,7 +162,7 @@ def run_content_pipeline(content_type: str, force: bool = False):
         
         if manual_mode:
             logger.info("Manual mode ON for %s — sending video to Telegram.", content_type)
-            send_to_telegram(final_video, f"[{content_type}] Ready for review")
+            telegram_send_video(final_video, f"[{content_type}] Ready for review")
         else:
             logger.info("Automatic mode ON for %s — uploading to YouTube.", content_type)
             privacy = type_config["privacy_status"]
@@ -190,8 +174,8 @@ def run_content_pipeline(content_type: str, force: bool = False):
                 privacy_status=privacy
             )
             
-            # Send notification to Telegram
-            send_to_telegram(final_video, f"[{content_type}] Uploaded to YouTube ({privacy})")
+            # Send notification to Telegram after upload
+            telegram_send_video(final_video, f"[{content_type}] Uploaded to YouTube ({privacy})")
 
     except Exception as e:
         logger.error("Pipeline failed for %s: %s", content_type, e, exc_info=True)

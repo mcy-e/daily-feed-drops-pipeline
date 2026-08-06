@@ -3,7 +3,7 @@ import pathlib
 import subprocess
 
 from scripts.render.image_card_renderer import render_image_card
-from scripts.render.text_segment import render_text_segment
+from scripts.render.fast_text_renderer import render_segment as render_text_segment
 from scripts.constants import VOICE_ENABLED_TYPES
 
 logger = logging.getLogger(__name__)

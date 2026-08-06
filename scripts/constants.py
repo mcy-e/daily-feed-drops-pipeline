@@ -14,6 +14,9 @@ TEMP_DIR = PROJECT_ROOT / "temp"
 # Legacy alias kept for backwards compatibility
 CHANNELS: list = []
 
+# Content types that use TTS voice (all others are silent + ambient only)
+VOICE_ENABLED_TYPES = {"meme_recap", "explained_topic", "quiz_riddle"}
+
 DEFAULT_API_PORT = 8001
 
 DRIVE_READONLY_SCOPES = [
