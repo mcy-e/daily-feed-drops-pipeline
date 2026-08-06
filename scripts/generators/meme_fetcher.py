@@ -47,7 +47,7 @@ def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
     if force:
         logger.info("Force mode: skipping meme deduplication history check")
     
-    while len(segments) < 3:
+    while len(segments) < 1:
         logger.info("Fetching batch of memes from meme-api.com")
         # Overriding MEME_API_URL to fetch 10 from safe subreddits
         resp = requests.get("https://meme-api.com/gimme/wholesomememes+me_irl+funny+gaming+memes/10", timeout=30, verify=False)
@@ -107,8 +107,8 @@ def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
                 logger.warning("Failed to fetch or process meme '%s': %s", title, e)
 
     script = {
-        "title": "Meme Recap 🔥",
+        "title": "Meme of the Day",
         "segments": segments,
     }
-    logger.info("Built meme_recap script with %d segments", len(segments))
+    logger.info("Built meme_recap script with %d meme", len(segments))
     return script

@@ -109,12 +109,13 @@ MANAGER_CONFIG_PATH = PROJECT_ROOT / "config" / "manager_config.json"
 
 CONTENT_TYPES = (
     "explained_topic",
-    "kids_content",
+    "dark_facts",
     "football_trivia",
     "viral_news",
     "quiz_riddle",
     "meme_recap",
     "motivation_content",
+    "would_you_rather",
 )
 
 PEXELS_API_KEY_ENV_VAR = "PEXELS_API_KEY"
@@ -139,15 +140,26 @@ CONTENT_TOPIC_POOLS = {
         "What lightning really is",
         "How microwave ovens heat food",
     ],
-    "kids_content": [
-        "Amazing facts about dolphins",
-        "Why rainbows appear after rain",
-        "How volcanoes erupt",
-        "Fun facts about the Moon",
-        "Why leaves change color",
-        "How bees make honey",
-        "Cool facts about dinosaurs",
-        "Why the ocean is salty",
+    "dark_facts": [
+        "The last person executed by guillotine in France",
+        "How long it would take to walk to the Moon",
+        "The world's deadliest animal",
+        "How deep the Mariana Trench actually is",
+        "The human body after 1 minute without oxygen",
+        "How hot a lightning bolt really gets",
+        "What happens to your body in space",
+        "The oldest living thing on Earth",
+        "How fast a sneeze travels",
+    ],
+    "would_you_rather": [
+        "fly but only 3 feet off the ground vs run at 100mph",
+        "know when you'll die vs know how you'll die",
+        "speak every language vs play every instrument",
+        "never feel pain vs never feel fear",
+        "be famous for something bad vs unknown for something great",
+        "only eat your favourite food forever vs never eat it again",
+        "be stuck in the past vs only live in the future",
+        "have wifi everywhere vs free food everywhere",
     ],
     "football_trivia": [
         "Most goals in a single World Cup",
@@ -204,12 +216,19 @@ CONTENT_STYLE_PRESETS = {
         "font": "Sans",
         "secondary_font": "Sans",
     },
-    "kids_content": {
-        "bg_color": "#ff6b6b",
+    "dark_facts": {
+        "bg_color": "#0a0a0a",
         "text_color": "#ffffff",
-        "accent_color": "#ffe66d",
-        "font": "Comic Sans MS",
-        "secondary_font": "Comic Sans MS",
+        "accent_color": "#ff3333",
+        "font": "Sans",
+        "secondary_font": "Sans",
+    },
+    "would_you_rather": {
+        "bg_color": "#0d0d2b",
+        "text_color": "#ffffff",
+        "accent_color": "#6c63ff",
+        "font": "Sans",
+        "secondary_font": "Sans",
     },
     "football_trivia": {
         "bg_color": "#1b4332",
@@ -250,10 +269,11 @@ CONTENT_STYLE_PRESETS = {
 
 YOUTUBE_TAGS_BY_CONTENT_TYPE = {
     "explained_topic": ["explained", "facts", "education", "shorts"],
-    "kids_content": ["kids", "facts", "learning", "shorts"],
+    "dark_facts": ["dark", "facts", "mindblowing", "shorts"],
+    "would_you_rather": ["wouldyourather", "this", "orthat", "shorts"],
     "football_trivia": ["football", "trivia", "soccer", "shorts"],
     "viral_news": ["news", "viral", "headlines", "shorts"],
     "quiz_riddle": ["quiz", "riddle", "brainteaser", "shorts"],
-    "meme_recap": ["memes", "funny", "recap", "shorts"],
+    "meme_recap": ["memes", "funny", "viral", "shorts"],
     "motivation_content": ["motivation", "inspiration", "mindset", "shorts"],
 }

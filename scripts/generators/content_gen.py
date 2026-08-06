@@ -51,15 +51,28 @@ Requirements:
 - 5-7 segments total
 - visual_content should be concise on-screen text (not the full narration)""",
 
-    "kids_content": """Create a 45-60 second fun facts video for kids about: {topic}
+    "dark_facts": """Create a 45-60 second dark facts video about: {topic}
 
-Style: bright, bold, energetic. Use visual_type "text" and "list" primarily, "number" for wow-stats.
+Style: dark, dramatic. Use visual_type "text" for the fact, "number" for shocking statistics.
 Requirements:
-- Open with a STRONG HOOK that makes kids say "whoa!"
+- Open with a STRONG HOOK that creates disbelief ("This will disturb you...")
 - Short, punchy sentences (max 12 words)
-- Pattern-interrupt or fun reveal midway
+- Build up to a shocking reveal
+- End with a haunting or mind-bending closer that makes people want to share
 - 5-7 segments
-- Keep language simple and exciting""",
+- Keep language clean but dramatic""",
+
+    "would_you_rather": """Create a 45-60 second Would You Rather video about the choice: {topic}
+
+Style: split-card dramatic. Use visual_type "text" for the options, "number" for surprising stats.
+Requirements:
+- Open with "Would you rather..." as a STRONG HOOK — present BOTH options clearly
+- Segment 2: dive into Option A — what life would actually be like
+- Segment 3: dive into Option B — what life would actually be like
+- Segment 4: drop a surprising fact or twist about the choice
+- Final segment: ask viewers to comment their answer
+- 5-6 segments total
+- End with a direct call-to-action: "Comment A or B!"""",
 
     "football_trivia": """Create a 45-60 second football trivia video about: {topic}
 
@@ -138,7 +151,7 @@ def _validate_script(script: dict, content_type: str) -> dict:
         raise ValueError(f"CRITIC_REJECT: Script has too few segments ({len(segments)}). You must generate at least 5 segments.")
 
     # Critic Check: Religion and NSFW
-    banned_words = {"god", "jesus", "allah", "religion", "bible", "quran", "church", "mosque", "sex", "porn", "nude", "nsfw", "kill", "suicide", "murder"}
+    banned_words = {"jesus", "allah", "religion", "bible", "quran", "church", "mosque", "sex", "porn", "nude", "nsfw", "suicide", "murder"}
     full_text = str(script).lower()
     if any(banned in full_text for banned in banned_words):
         raise ValueError("CRITIC_REJECT: Script contains religious, violent, or NSFW terms. Rewrite completely without these topics.")

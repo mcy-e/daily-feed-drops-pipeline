@@ -1,8 +1,7 @@
-name: Run Content Pipeline
+﻿name: Run Content Pipeline
 
 on:
   schedule:
-    # Runs every hour - each content type checks its own schedule window internally
     - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
@@ -12,7 +11,8 @@ on:
         type: choice
         options:
           - explained_topic
-          - kids_content
+          - dark_facts
+          - would_you_rather
           - football_trivia
           - viral_news
           - quiz_riddle
@@ -30,6 +30,18 @@ permissions:
 jobs:
   run-content:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        content_type:
+          - explained_topic
+          - dark_facts
+          - would_you_rather
+          - football_trivia
+          - viral_news
+          - quiz_riddle
+          - meme_recap
+          - motivation_content
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,17 +63,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ffmpeg \
-            libcairo2-dev \
-            libpango1.0-dev \
-            texlive \
-            texlive-latex-extra \
-            texlive-fonts-extra \
-            texlive-latex-recommended \
-            texlive-science \
-            tipa \
-            dvisvgm
+          sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
@@ -75,8 +77,7 @@ jobs:
           echo "$CLIENT_SECRET_B64" | base64 --decode > config/client_secret_v2.json
           echo "$TOKEN_B64" | base64 --decode > config/token_v2.json
 
-      - name: Run content pipeline (manual dispatch - single type)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Run content pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -86,21 +87,12 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         run: |
-          python -m scripts.run_content_pipeline \
-            --type "${{ inputs.content_type }}" \
-            ${{ inputs.force && '--force' || '' }}
-
-      - name: Run content pipeline (scheduled - check all types against their slots)
-        if: github.event_name == 'schedule'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
-        run: |
-          for type in explained_topic kids_content football_trivia viral_news quiz_riddle meme_recap motivation_content; do
-            python -m scripts.run_content_pipeline --type "$type" || true
-          done
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ matrix.content_type }}" = "${{ inputs.content_type }}" ]; then
+              python -m scripts.run_content_pipeline --type "${{ matrix.content_type }}" ${{ inputs.force && '--force' || '' }}
+            else
+              echo "Skipping ${{ matrix.content_type }} (not selected in dispatch)"
+            fi
+          else
+            python -m scripts.run_content_pipeline --type "${{ matrix.content_type }}"
+          fi

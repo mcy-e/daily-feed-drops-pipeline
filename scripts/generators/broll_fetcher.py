@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 import pathlib
 import random
@@ -50,7 +50,9 @@ def fetch_aesthetic_broll(dest_dir: pathlib.Path) -> str:
     if not videos:
         raise RuntimeError("No Pexels videos found for B-Roll")
 
-    video_meta = random.choice(videos)
+    # Filter to clips >= 60s so the video never visibly loops during a short
+    long_videos = [v for v in videos if v.get("duration", 0) >= 60]
+    video_meta = random.choice(long_videos) if long_videos else random.choice(videos)
     video_files = video_meta.get("video_files", [])
     if not video_files:
         raise RuntimeError("Pexels video has no files")
