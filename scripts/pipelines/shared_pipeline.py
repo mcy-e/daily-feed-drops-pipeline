@@ -92,7 +92,7 @@ def _fetch_all_segment_images(script: dict, content_type: str, images_dir: pathl
 def _get_content_config(config: dict, content_type: str) -> dict:
     """Extract per-content-type settings from manager config."""
     return {
-        "manual_mode": config.get("manual_mode", {}).get(content_type, False),
+        "manual_mode": config.get("manual_mode", {}).get(content_type, True),
         "privacy_status": config.get("privacy_status", {}).get(content_type, "private"),
         "schedules": config.get("schedules", {}).get(content_type, []),
     }

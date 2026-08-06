@@ -24,15 +24,15 @@ logger = logging.getLogger(__name__)
 
 SCRIPT_SCHEMA = """
 {
-  "title": "string — catchy video title",
+  "title": "string â€” catchy video title",
   "segments": [
     {
       "id": 1,
-      "narration": "string — spoken text for TTS",
+      "narration": "string â€” spoken text for TTS",
       "visual_type": "text | number | list | shape | image",
-      "visual_content": "string — on-screen visual payload",
+      "visual_content": "string â€” on-screen visual payload",
       "image_needed": false,
-      "image_query": "string — Pexels search query if image_needed",
+      "image_query": "string â€” Pexels search query if image_needed",
       "image_path": "",
       "pause_after": 0.5
     }
@@ -41,82 +41,66 @@ SCRIPT_SCHEMA = """
 """
 
 CONTENT_PROMPTS = {
-    "explained_topic": """Create a 45-60 second short-form explainer video script about: {topic}
+    "explained_topic": """Create a short explainer about: {topic}
 
-Style: clean, minimal, educational. Use visual_type "text" for key concepts, "list" for steps, "number" for stats.
+Style: Single meme-card format. Use visual_type "text".
 Requirements:
-- Open with a STRONG HOOK line that grabs attention immediately
-- Short, punchy sentences throughout (max 15 words each)
-- Include a pattern-interrupt or surprising reveal around the middle
-- 5-7 segments total
-- visual_content should be concise on-screen text (not the full narration)""",
+- Summarize the ENTIRE explanation into EXACTLY 1 segment.
+- The visual_content MUST contain the full summarized explanation (max 30 words) in one block of text.
+- The narration can provide more detail and context, but the visual text is a static summary.
+- End the narration by asking for their opinion.""",
 
-    "dark_facts": """Create a 45-60 second dark facts video about: {topic}
+    "dark_facts": """Create a short, punchy dark history fact about: {topic}
 
-Style: dark, dramatic. Use visual_type "text" for the fact, "number" for shocking statistics.
+Style: Single meme-card format. Use visual_type "text" for the fact.
 Requirements:
-- Open with a STRONG HOOK that creates disbelief ("This will disturb you...")
-- Short, punchy sentences (max 12 words)
-- Build up to a shocking reveal
-- End with a haunting or mind-bending closer that makes people want to share
-- 5-7 segments
+- Summarize the entire fact into EXACTLY 1 segment.
+- The narration should still be engaging and atmospheric.
+- The visual_content MUST contain the entire summarized fact in one block of text (max 25 words).
 - Keep language clean but dramatic""",
 
-    "would_you_rather": """Create a 45-60 second Would You Rather video about the choice: {topic}
+    "would_you_rather": """Create a Would You Rather dilemma about the choice: {topic}
 
-Style: split-card dramatic. Use visual_type "text" for the options, "number" for surprising stats.
+Style: Single split-card dramatic format. Use visual_type "text" for the options.
 Requirements:
-- Open with "Would you rather..." as a STRONG HOOK — present BOTH options clearly
-- Segment 2: dive into Option A — what life would actually be like
-- Segment 3: dive into Option B — what life would actually be like
-- Segment 4: drop a surprising fact or twist about the choice
-- Final segment: ask viewers to comment their answer
-- 5-6 segments total
-- End with a direct call-to-action: 'Comment A or B!'""",
+- Summarize the entire dilemma into EXACTLY 1 segment.
+- The visual_content MUST contain both Option A and Option B clearly stated.
+- The narration can add a bit of context or a surprising twist before asking them to choose.
+- visual_content should be around 15-20 words max.""",
 
-    "football_trivia": """Create a 45-60 second football trivia video about: {topic}
+    "football_trivia": """Create a football trivia stat about: {topic}
 
-Style: stat-card format. Use visual_type "number" for the key stat, "text" for context.
+Style: Single stat-card format. Use visual_type "text" for context.
 Requirements:
-- Open with a STRONG HOOK teasing the stat
-- Short, punchy sentences
-- Build suspense, then reveal the answer as a pattern-interrupt
-- 5-6 segments
-- visual_content for numbers should be the stat itself (e.g. "873 goals")""",
+- Summarize the entire trivia/stat into EXACTLY 1 segment.
+- The visual_content MUST contain the summarized stat (e.g. "Messi scored 91 goals in 2012").
+- The narration can build suspense before revealing it.
+- Keep the visual_content under 20 words.""",
 
-    "viral_news": """Turn this REAL current news headline into a 45-60 second viral news short:
+    "viral_news": """Turn this REAL current news headline into a short viral news short:
 
-HEADLINE: {headline}
-CATEGORY: {subcategory}
+Headline: {headline}
+Category: {subcategory}
 
-CRITICAL: Base the script ONLY on this headline. Do NOT invent or hallucinate news events.
-Use visual_type "text" for headline-style cards, "image" with image_needed=true for a thematic stock photo.
+Style: Single news-card format. Use visual_type "text" for the headline/summary.
 Requirements:
-- Open with the headline as a STRONG HOOK
-- Short, punchy sentences
-- Add brief context and a "why this matters" beat
-- Pattern-interrupt midway with a surprising angle from the headline
-- 5-6 segments
-- For image segments: image_needed=true, image_query=generic thematic stock photo query (NO movie posters, game art, or promotional stills)""",
+- Summarize the entire news story into EXACTLY 1 segment.
+- The visual_content MUST contain a punchy summary of the news (max 30 words).
+- The narration should read like a fast-paced TikTok news anchor.""",
 
-    "quiz_riddle": """Create a 45-60 second quiz/riddle video:
+    "quiz_riddle": """Create a short quiz or riddle about: {topic}
 
-RIDDLE: {topic}
-
-Style: dark, suspenseful. Use visual_type "text" for the riddle, "shape" for question marks.
+Style: Single quiz-card format. Use visual_type "text".
 Requirements:
-- Open with a STRONG HOOK ("Can you solve this?")
-- Present the riddle with building tension
-- Pattern-interrupt: dramatic pause before the reveal segment
-- Final segment reveals the answer
-- 5-6 segments
-- Do NOT give away the answer until the last segment""",
+- Generate EXACTLY 1 segment.
+- The visual_content MUST contain the Riddle/Quiz Question AND the Answer on the same screen (max 30 words).
+- The narration should read the question, pause, and reveal the answer.""",
 
     "motivation_content": """Create a 45-60 second original motivational short inspired by the theme: {topic}
 
 Style: warm, uplifting. Use visual_type "text" for key lines.
-CRITICAL: Write ORIGINAL motivational words — do NOT quote or attribute real people (no "as X said").
-Structure: struggle → turning point → payoff (uplifting arc).
+CRITICAL: Write ORIGINAL motivational words â€” do NOT quote or attribute real people (no "as X said").
+Structure: struggle â†’ turning point â†’ payoff (uplifting arc).
 Requirements:
 - Open with a STRONG HOOK that resonates emotionally
 - Short, punchy sentences with poetic rhythm
@@ -168,7 +152,7 @@ def _validate_script(script: dict, content_type: str) -> dict:
     if content_type == "motivation_content":
         narration = " ".join(s.get("narration", "") for s in segments).lower()
         attribution_patterns = [
-            r"\bsaid\b", r"\bas .+ once", r"— \w+", r"- \w+ \w+$",
+            r"\bsaid\b", r"\bas .+ once", r"â€” \w+", r"- \w+ \w+$",
             r"\bsteve jobs\b", r"\boprah\b", r"\bgandhi\b", r"\bmlk\b",
         ]
         for pattern in attribution_patterns:
@@ -296,20 +280,21 @@ Return ONLY valid JSON matching this schema (no markdown, no commentary):
             except genai.errors.APIError as exc:
                 last_exc = exc
                 if getattr(exc, 'code', None) == 429 or _is_quota_error(exc):
-                    logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+                    logger.warning("Provider %s hit quota/rate-limit: %s â€” trying next", provider_name, type(exc).__name__)
                     break
                 else:
-                    logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                    logger.warning("Provider %s failed: %s â€” aborting fallback chain", provider_name, type(exc).__name__)
                     raise
             except Exception as exc:
                 last_exc = exc
                 if _is_quota_error(exc):
-                    logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+                    logger.warning("Provider %s hit quota/rate-limit: %s â€” trying next", provider_name, type(exc).__name__)
                     break
                 else:
-                    logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                    logger.warning("Provider %s failed: %s â€” aborting fallback chain", provider_name, type(exc).__name__)
                     raise
 
     raise RuntimeError(
         f"All LLM providers failed for content type '{content_type}'. Last error: {last_exc}"
     ) from last_exc
+
