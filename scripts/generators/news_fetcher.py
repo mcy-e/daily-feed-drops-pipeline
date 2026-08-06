@@ -1,7 +1,6 @@
-import logging
+﻿import logging
 import os
 import random
-
 import requests
 import urllib3
 
@@ -14,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 @retry_with_backoff(max_retries=3, delays=(2, 5, 10))
-def fetch_current_headline() -> tuple[str, str]:
+def fetch_current_headline() -> tuple[str, str, str]:
     """Fetch a real current headline from GNews.
     Tries random subcategories until one works.
 
-    Returns (subcategory_key, headline_text).
+    Returns (subcategory_key, headline_text, image_url).
     """
     api_key = os.getenv(GNEWS_API_KEY_ENV_VAR)
     if not api_key:
@@ -53,8 +52,10 @@ def fetch_current_headline() -> tuple[str, str]:
                 logger.warning("GNews article had empty title. Trying another...")
                 continue
 
-            logger.info("Selected headline: %s", headline)
-            return subcategory, headline
+            image_url = article.get("image", "")
+
+            logger.info("Selected headline: %s, image: %s", headline, bool(image_url))
+            return subcategory, headline, image_url
         except Exception as e:
             logger.warning(f"Failed to fetch for {subcategory}: {e}. Trying another...")
             continue

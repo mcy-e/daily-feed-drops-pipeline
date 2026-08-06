@@ -250,8 +250,9 @@ def generate_script(content_type: str) -> dict:
     if content_type == "meme_recap":
         raise ValueError("meme_recap uses meme_fetcher, not content_gen")
 
+    news_image_url = None
     if content_type == "viral_news":
-        subcategory, headline = fetch_current_headline()
+        subcategory, headline, news_image_url = fetch_current_headline()
         prompt_body = CONTENT_PROMPTS["viral_news"].format(
             headline=headline, subcategory=subcategory
         )
@@ -278,6 +279,8 @@ Return ONLY valid JSON matching this schema (no markdown, no commentary):
                 script = _parse_json_response(raw)
                 script = _validate_script(script, content_type)
                 script["provider"] = provider_name
+                if news_image_url:
+                    script["news_image_url"] = news_image_url
                 logger.info("Script generated via %s: '%s' (%d segments)", provider_name, script["title"], len(script["segments"]))
                 return script
             except ValueError as exc:

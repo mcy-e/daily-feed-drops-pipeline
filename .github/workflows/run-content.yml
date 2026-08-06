@@ -17,7 +17,6 @@ on:
           - viral_news
           - quiz_riddle
           - meme_recap
-          - motivation_content
       force:
         description: 'Force run (bypass schedule check)'
         required: false
@@ -30,18 +29,6 @@ permissions:
 jobs:
   run-content:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        content_type:
-          - explained_topic
-          - dark_facts
-          - would_you_rather
-          - football_trivia
-          - viral_news
-          - quiz_riddle
-          - meme_recap
-          - motivation_content
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -88,11 +75,9 @@ jobs:
           GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ matrix.content_type }}" = "${{ inputs.content_type }}" ]; then
-              python -m scripts.run_content_pipeline --type "${{ matrix.content_type }}" ${{ inputs.force && '--force' || '' }}
-            else
-              echo "Skipping ${{ matrix.content_type }} (not selected in dispatch)"
-            fi
+            python -m scripts.run_content_pipeline --type "${{ inputs.content_type }}" ${{ inputs.force && '--force' || '' }}
           else
-            python -m scripts.run_content_pipeline --type "${{ matrix.content_type }}"
+            for type in explained_topic dark_facts would_you_rather football_trivia viral_news quiz_riddle meme_recap; do
+              python -m scripts.run_content_pipeline --type "$type" || true
+            done
           fi
