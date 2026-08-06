@@ -81,18 +81,11 @@ def build_filter_graph(src_width: int, src_height: int, srt_path: str = None) ->
     overlay_x = (w - fg_w) // 2
     overlay_y = (h - fg_h) // 2
 
-    # Optional subtitles filter
-    subs_filter = ""
-    if srt_path:
-        # Escape path for FFmpeg subtitles filter on Windows/Linux and wrap in quotes
-        escaped_srt = str(srt_path).replace("\\", "/").replace(":", "\\:")
-        subs_filter = f",subtitles='{escaped_srt}'"
-
     filter_graph = (
         f"split[bg][fg];"
         f"[bg]scale={w}:{h}:force_original_aspect_ratio=increase,"
         f"crop={w}:{h},gblur=sigma={BLUR_SIGMA}[blurred];"
-        f"[fg]scale={fg_w}:{fg_h}{subs_filter}[sharp];"
+        f"[fg]scale={fg_w}:{fg_h}[sharp];"
         f"[blurred][sharp]overlay={overlay_x}:{overlay_y}"
     )
 

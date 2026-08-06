@@ -31,19 +31,48 @@ def build_srt(segments_audio: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def mux_segment(video_path: str, audio_path: str, output_path: str, total_duration: float) -> str:
-    """Mux a Manim video with its TTS audio track, preserving the full segment duration."""
+def composite_segment_on_broll(
+    broll_path: str,
+    manim_overlay_path: str,
+    audio_path: str,
+    output_path: str,
+    total_duration: float,
+) -> str:
+    """Overlay transparent Manim MOV on top of B-Roll video with TTS audio."""
+    filter_graph = (
+        "[0:v]loop=loop=-1:size=32767:start=0,"
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,setpts=PTS-STARTPTS[bg];"
+        "[1:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,setpts=PTS-STARTPTS[fg];"
+        "[bg][fg]overlay=0:0:format=auto[out]"
+    )
     cmd = [
         "ffmpeg", "-y",
-        "-i", video_path,
+        "-stream_loop", "-1",
+        "-i", broll_path,
+        "-i", manim_overlay_path,
         "-i", audio_path,
+        "-filter_complex", filter_graph,
+        "-map", "[out]",
+        "-map", "2:a:0",
         "-t", str(total_duration),
-        "-c:v", "copy",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
         "-c:a", "aac",
+        "-shortest",
         output_path,
     ]
-    logger.info("Muxing segment: %s + %s", pathlib.Path(video_path).name, pathlib.Path(audio_path).name)
-    subprocess.run(cmd, capture_output=True, text=True, check=True)
+    logger.info(
+        "Compositing segment: broll=%s + manim=%s",
+        pathlib.Path(broll_path).name, pathlib.Path(manim_overlay_path).name,
+    )
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Composite failed: %s", exc.stderr[-500:])
+        raise RuntimeError(f"Composite failed: {exc.stderr[-300:]}") from exc
     return output_path
 
 
@@ -77,22 +106,42 @@ def assemble_video(
     segment_videos: list[str],
     segment_audios: list[dict],
     output_dir: pathlib.Path,
-) -> tuple[str, str]:
-    """Mux, concatenate segments, and write SRT. Returns (video_path, srt_path)."""
+    broll_path: str = None,
+) -> str:
+    """Composite Manim overlays onto B-Roll (or fallback blur-pad), then concatenate. Returns final video path."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    muxed_paths = []
+    composited_paths = []
     for video, audio_meta in zip(segment_videos, segment_audios):
-        muxed = str(output_dir / f"muxed_{audio_meta['id']:02d}.mp4")
-        mux_segment(video, audio_meta["audio_path"], muxed, audio_meta["total_duration"])
-        muxed_paths.append(muxed)
+        out = str(output_dir / f"composited_{audio_meta['id']:02d}.mp4")
+        if broll_path:
+            composite_segment_on_broll(
+                broll_path, video, audio_meta["audio_path"], out, audio_meta["total_duration"]
+            )
+        else:
+            # Fallback: simple mux without B-Roll
+            from scripts.constants import FFMPEG_CRF, FFMPEG_PRESET, RENDER_WIDTH, RENDER_HEIGHT, BLUR_SIGMA
+            filter_graph = (
+                "split[bg][fg];"
+                f"[bg]scale={RENDER_WIDTH}:{RENDER_HEIGHT}:force_original_aspect_ratio=increase,"
+                f"crop={RENDER_WIDTH}:{RENDER_HEIGHT},gblur=sigma={BLUR_SIGMA}[blurred];"
+                f"[fg]scale={RENDER_WIDTH}:{RENDER_HEIGHT}[sharp];"
+                "[blurred][sharp]overlay=(W-w)/2:(H-h)/2"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", video, "-i", audio_meta["audio_path"],
+                "-filter_complex", filter_graph,
+                "-map", "[sharp]", "-map", "1:a:0",
+                "-t", str(audio_meta["total_duration"]),
+                "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", str(FFMPEG_CRF),
+                "-c:a", "aac", out,
+            ]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+        composited_paths.append(out)
 
-    assembled_path = str(output_dir / "assembled.mp4")
-    concatenate_segments(muxed_paths, assembled_path)
+    final_path = str(output_dir / "final.mp4")
+    concatenate_segments(composited_paths, final_path)
 
-    srt_content = build_srt(segment_audios)
-    srt_path = str(output_dir / "captions.srt")
-    pathlib.Path(srt_path).write_text(srt_content, encoding="utf-8")
-
-    logger.info("Assembly complete: %s", assembled_path)
-    return assembled_path, srt_path
+    logger.info("Assembly complete: %s", final_path)
+    return final_path

@@ -49,12 +49,15 @@ def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
     
     while len(segments) < 3:
         logger.info("Fetching batch of memes from meme-api.com")
-        # Overriding MEME_API_URL to fetch 10 at a time to ensure we have enough candidates
-        resp = requests.get("https://meme-api.com/gimme/10", timeout=30, verify=False)
+        # Overriding MEME_API_URL to fetch 10 from safe subreddits
+        resp = requests.get("https://meme-api.com/gimme/wholesomememes+me_irl+funny+gaming+memes/10", timeout=30, verify=False)
         resp.raise_for_status()
         data = resp.json()
         
         memes = [m for m in data.get("memes", []) if not m.get("nsfw") and not m.get("spoiler")]
+        
+        # Keywords to ban
+        banned_words = {"god", "jesus", "allah", "religion", "bible", "quran", "church", "mosque", "sex", "porn", "nude", "nsfw", "kill", "suicide", "murder"}
         
         for meme in memes:
             if len(segments) >= 3:
@@ -62,7 +65,12 @@ def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
                 
             image_url = meme.get("url", "")
             title = meme.get("title", "Meme").strip()
+            title_lower = title.lower()
             
+            if any(banned in title_lower for banned in banned_words):
+                logger.info("Skipping meme due to banned keyword in title: %s", title)
+                continue
+                
             if image_url in used_memes:
                 logger.info("Skipping already used meme: %s", title)
                 continue

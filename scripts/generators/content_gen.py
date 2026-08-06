@@ -129,13 +129,19 @@ def _parse_json_response(text: str) -> dict:
 
 
 def _validate_script(script: dict, content_type: str) -> dict:
-    """Validate and normalize the generated script structure."""
+    """Validate and normalize the generated script structure. Raises ValueError if critic rejects it."""
     if "title" not in script or "segments" not in script:
-        raise ValueError("Script missing required 'title' or 'segments' fields")
+        raise ValueError("CRITIC_REJECT: Script missing required 'title' or 'segments' fields. Return valid JSON.")
 
     segments = script["segments"]
     if not segments or len(segments) < 3:
-        raise ValueError(f"Script has too few segments: {len(segments)}")
+        raise ValueError(f"CRITIC_REJECT: Script has too few segments ({len(segments)}). You must generate at least 5 segments.")
+
+    # Critic Check: Religion and NSFW
+    banned_words = {"god", "jesus", "allah", "religion", "bible", "quran", "church", "mosque", "sex", "porn", "nude", "nsfw", "kill", "suicide", "murder"}
+    full_text = str(script).lower()
+    if any(banned in full_text for banned in banned_words):
+        raise ValueError("CRITIC_REJECT: Script contains religious, violent, or NSFW terms. Rewrite completely without these topics.")
 
     valid_visual_types = {"text", "number", "list", "shape", "image"}
     for seg in segments:
@@ -154,7 +160,7 @@ def _validate_script(script: dict, content_type: str) -> dict:
         ]
         for pattern in attribution_patterns:
             if re.search(pattern, narration):
-                logger.warning("Possible attribution detected in motivation script — regenerating recommended")
+                raise ValueError("CRITIC_REJECT: Motivation script contains attributions to real people. It must be completely original. Rewrite it.")
 
     return script
 
@@ -225,7 +231,7 @@ def _is_quota_error(exc: Exception) -> bool:
 
 
 def generate_script(content_type: str) -> dict:
-    """Generate a structured video script via LLM with Gemini → Groq → OpenRouter fallback."""
+    """Generate a structured video script via LLM with self-correction and fallback."""
     if content_type not in CONTENT_TYPES:
         raise ValueError(f"Unknown content type: {content_type}")
     if content_type == "meme_recap":
@@ -241,7 +247,7 @@ def generate_script(content_type: str) -> dict:
         topic = random.choice(topic_pool)
         prompt_body = CONTENT_PROMPTS[content_type].format(topic=topic)
 
-    full_prompt = f"""{prompt_body}
+    base_prompt = f"""{prompt_body}
 
 Return ONLY valid JSON matching this schema (no markdown, no commentary):
 {SCRIPT_SCHEMA}"""
@@ -250,28 +256,43 @@ Return ONLY valid JSON matching this schema (no markdown, no commentary):
 
     last_exc = None
     for provider_name, provider_fn in _PROVIDER_CHAIN:
-        try:
-            logger.info("Trying provider: %s", provider_name)
-            raw = provider_fn(full_prompt)
-            script = _parse_json_response(raw)
-            script = _validate_script(script, content_type)
-            script["provider"] = provider_name
-            logger.info("Script generated via %s: '%s' (%d segments)", provider_name, script["title"], len(script["segments"]))
-            return script
-        except genai.errors.APIError as exc:
-            last_exc = exc
-            if getattr(exc, 'code', None) == 429 or _is_quota_error(exc):
-                logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
-            else:
-                logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
-                raise
-        except Exception as exc:
-            last_exc = exc
-            if _is_quota_error(exc):
-                logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
-            else:
-                logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
-                raise
+        prompt_to_send = base_prompt
+        # Up to 2 self-correction attempts per provider
+        for attempt in range(3):
+            try:
+                logger.info("Trying provider: %s (Attempt %d/3)", provider_name, attempt + 1)
+                raw = provider_fn(prompt_to_send)
+                script = _parse_json_response(raw)
+                script = _validate_script(script, content_type)
+                script["provider"] = provider_name
+                logger.info("Script generated via %s: '%s' (%d segments)", provider_name, script["title"], len(script["segments"]))
+                return script
+            except ValueError as exc:
+                if str(exc).startswith("CRITIC_REJECT:"):
+                    logger.warning("LLM Critic rejected script: %s. Attempting self-correction...", exc)
+                    prompt_to_send = f"{base_prompt}\n\nWARNING: Your last output failed validation with this error:\n{exc}\n\nFIX THIS ERROR AND RETURN VALID JSON."
+                    last_exc = exc
+                    continue
+                else:
+                    # Normal value error (like json decode)
+                    last_exc = exc
+                    break
+            except genai.errors.APIError as exc:
+                last_exc = exc
+                if getattr(exc, 'code', None) == 429 or _is_quota_error(exc):
+                    logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+                    break
+                else:
+                    logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                    raise
+            except Exception as exc:
+                last_exc = exc
+                if _is_quota_error(exc):
+                    logger.warning("Provider %s hit quota/rate-limit: %s — trying next", provider_name, type(exc).__name__)
+                    break
+                else:
+                    logger.warning("Provider %s failed: %s — aborting fallback chain", provider_name, type(exc).__name__)
+                    raise
 
     raise RuntimeError(
         f"All LLM providers failed for content type '{content_type}'. Last error: {last_exc}"

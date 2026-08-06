@@ -10,13 +10,13 @@ from scripts.constants import (
     YOUTUBE_TAGS_BY_CONTENT_TYPE,
 )
 from scripts.generators.content_gen import generate_script
+from scripts.generators.broll_fetcher import fetch_aesthetic_broll
 from scripts.generators.image_fetcher import fetch_pexels_image
 from scripts.generators.meme_fetcher import fetch_meme_script
 from scripts.manim_scenes.scene_builder import render_all_segments
 from scripts.notifications.telegram import send_message, send_video
 from scripts.pipelines.schedule import load_manager_config, should_run_for_schedule
 from scripts.render.assemble import assemble_video
-from scripts.render.render import render_video
 from scripts.render.segment_audio import generate_all_segment_audio
 
 logger = logging.getLogger(__name__)
@@ -98,21 +98,22 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
         # 3. Generate TTS per segment
         segments_audio = generate_all_segment_audio(script["segments"], str(audio_dir))
 
-        # 4. Render Manim scenes
+        # 4. Render Manim scenes (transparent overlay)
         segment_videos = render_all_segments(
             script["segments"], content_type, segments_audio, manim_dir
         )
 
-        # 5. Mux, concatenate, build SRT
-        assembled_path, srt_path = assemble_video(
-            segment_videos, segments_audio, segments_dir
-        )
+        # 5. Fetch satisfying B-Roll background
+        broll_path = None
+        try:
+            broll_path = fetch_aesthetic_broll(run_dir / "broll")
+            logger.info("B-Roll fetched: %s", broll_path)
+        except Exception as broll_exc:
+            logger.warning("B-Roll fetch failed (%s) — falling back to blur-pad", broll_exc)
 
-        # 6. Final 9:16 blur-pad + burned captions pass
-        final_path = render_video(
-            assembled_path,
-            output_dir=run_dir,
-            srt_path=srt_path,
+        # 6. Composite Manim onto B-Roll per segment, then concatenate
+        final_path = assemble_video(
+            segment_videos, segments_audio, segments_dir, broll_path=broll_path
         )
 
         # 7. Delivery

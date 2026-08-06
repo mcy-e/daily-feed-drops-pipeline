@@ -50,7 +50,8 @@ def render_segment(
         "manim",
         "render",
         f"-q{quality}",
-        "--format", "mp4",
+        "-t",
+        "--format", "mov",
         "-r", f"{MANIM_PIXEL_WIDTH},{MANIM_PIXEL_HEIGHT}",
         "--media_dir", str(output_dir),
         "--disable_caching",
@@ -79,15 +80,15 @@ def render_segment(
 
 
 def _find_rendered_video(media_dir: pathlib.Path, scene_class: str) -> pathlib.Path | None:
-    """Locate the rendered MP4 in Manim's media directory structure."""
-    candidates = list(media_dir.rglob(f"{scene_class}.mp4"))
+    """Locate the rendered MOV in Manim's media directory structure."""
+    candidates = list(media_dir.rglob(f"{scene_class}.mov"))
     if candidates:
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
     for sub in ["videos", "media"]:
         search = media_dir / sub
         if search.exists():
-            found = list(search.rglob("*.mp4"))
+            found = list(search.rglob("*.mov"))
             if found:
                 return max(found, key=lambda p: p.stat().st_mtime)
     return None

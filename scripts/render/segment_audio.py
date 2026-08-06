@@ -35,17 +35,39 @@ def generate_segment_audio(
     narration = segment["narration"]
     audio_path = f"{output_dir}/seg_{seg_id:02d}.mp3"
 
-    cmd = [
-        "python", "-c",
-        "import ssl, sys; ssl.create_default_context = ssl._create_unverified_context; "
-        "from edge_tts.util import main; sys.exit(main())",
-        "--text", narration,
-        "--voice", voice,
-        "--write-media", audio_path,
-    ]
-
-    logger.info("Generating TTS for segment %d (len=%d)", seg_id, len(narration))
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    import requests
+    import base64
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    # TikTok TTS viral voice (en_us_001 = Jessie/enthusiastic female, en_us_006 = deep male)
+    voice_id = "en_us_001"
+    
+    logger.info("Generating TikTok TTS for segment %d (len=%d) using voice %s", seg_id, len(narration), voice_id)
+    
+    try:
+        response = requests.post(
+            "https://tiktok-tts.weilnet.workers.dev/api/generation",
+            json={"text": narration, "voice": voice_id},
+            verify=False,
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        if not data.get("success"):
+            raise RuntimeError(f"TikTok TTS API returned error: {data}")
+            
+        audio_b64 = data.get("data")
+        if not audio_b64:
+            raise RuntimeError("No audio data returned from TikTok TTS")
+            
+        with open(audio_path, "wb") as f:
+            f.write(base64.b64decode(audio_b64))
+            
+    except Exception as exc:
+        logger.error("TikTok TTS failed: %s", exc)
+        raise RuntimeError(f"TikTok TTS generation failed: {exc}") from exc
 
     duration = _probe_audio_duration(audio_path)
     pause_after = float(segment.get("pause_after", 0.5))

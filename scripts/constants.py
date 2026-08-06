@@ -187,6 +187,7 @@ VIRAL_NEWS_SUBCATEGORIES = {
 
 MEME_API_URL = "https://meme-api.com/gimme/5"
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
+PEXELS_VIDEO_SEARCH_URL = "https://api.pexels.com/videos/search"
 GNEWS_SEARCH_URL = "https://gnews.io/api/v4/search"
 
 MANIM_FRAME_WIDTH = 9
