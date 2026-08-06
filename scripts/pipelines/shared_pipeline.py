@@ -2,62 +2,50 @@ import json
 import logging
 import pathlib
 import random
-import shutil
-import uuid
-import requests
 
-from scripts.constants import (
-    CONTENT_TYPES,
-    DEFAULT_TEMP_DIR,
-    YOUTUBE_TAGS_BY_CONTENT_TYPE,
-)
-from scripts.generators.content_gen import generate_script
+from scripts.constants import CHANNELS, CONTENT_TYPES, TEMP_DIR, MANAGER_CONFIG_PATH
 from scripts.generators.broll_fetcher import fetch_aesthetic_broll
-from scripts.generators.image_fetcher import fetch_pexels_image
-from scripts.generators.meme_fetcher import fetch_meme_script
-from scripts.manim_scenes.scene_builder import render_all_segments
-from scripts.notifications.telegram import send_message, send_video
-from scripts.pipelines.schedule import load_manager_config, should_run_for_schedule
+from scripts.generators.content_gen import generate_script
+from scripts.generators.pexels_fetcher import fetch_pexels_image
+from scripts.pipelines.schedule import is_scheduled_time, load_manager_config
 from scripts.render.assemble import assemble_video
-from scripts.render.segment_audio import generate_all_segment_audio
+from scripts.render.segment_audio import generate_all_audio
+from scripts.manim_scenes.scene_builder import render_all_segments
+from scripts.uploaders.telegram_bot import send_to_telegram
+from scripts.uploaders.youtube_uploader import upload_video
 
 logger = logging.getLogger(__name__)
 
 END_CARD_HOOKS = {
-    "dark_facts": ["Did you know this? Comment below 👇", "Follow for more dark facts", "Share this if it shocked you"],
-    "would_you_rather": ["Comment A or B 👇", "Tag someone who would pick the wrong one", "Which would YOU choose?"],
-    "football_trivia": ["Did you get it right? Comment below", "Follow for daily football facts", "Share with a football fan!"],
-    "viral_news": ["What do you think about this? Comment below", "Follow for more", "Share this story!"],
-    "explained_topic": ["Did you know this? Follow for more", "Share this with someone who needs to know", "Drop a comment if this surprised you!"],
-    "quiz_riddle": ["Comment your answer below!", "How fast did you get it?", "Tag a friend to solve this!"],
-    "meme_recap": ["Follow for daily memes", "Tag someone in this", "Double tap if you laughed 😂"],
+    "dark_facts": ["Did you know this? Comment below!", "Hit subscribe if this gave you chills."],
+    "would_you_rather": ["Comment A or B!", "What would you choose? Let us know!"],
+    "football_trivia": ["Did you guess it? Subscribe for more!", "Drop a like if you love football!"],
+    "viral_news": ["What do you think? Comment below!", "Follow for daily news drops!"],
+    "explained_topic": ["Did you learn something? Like & Subscribe!", "Follow for daily explainers!"],
+    "meme_recap": ["Send this to a friend!", "Follow for daily memes!"],
+    "quiz_riddle": ["Did you get it right? Comment below!", "Subscribe for more riddles!"],
+    "motivation_content": ["Save this for later!", "Follow to stay motivated!"],
+    "kids_content": ["Like and subscribe for more fun!", "Share with your friends!"],
 }
 
 
-def _cleanup_root_temp() -> None:
-    """Delete and recreate the root temp directory at pipeline start."""
-    if DEFAULT_TEMP_DIR.exists():
-        shutil.rmtree(DEFAULT_TEMP_DIR)
-    DEFAULT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
-    logger.info("Cleaned temp directory: %s", DEFAULT_TEMP_DIR)
-
-
-def _cleanup_temp_dir(run_dir: pathlib.Path) -> None:
-    """Delete and recreate the run's temp output directory."""
-    if run_dir.exists():
-        shutil.rmtree(run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Temp directory ready: %s", run_dir)
-
-
 def _derive_image_query(segment: dict, content_type: str) -> str:
-    """Derive a Pexels search query from segment data or narration as a fallback."""
-    if segment.get("image_query"):
-        return segment["image_query"]
-    # Extract the first meaningful words from the narration as a fallback query
-    narration = segment.get("narration", "")
-    words = [w for w in narration.split() if len(w) > 3][:5]
-    return " ".join(words) if words else content_type.replace("_", " ")
+    """Generate a decent stock photo query based on the segment text."""
+    # We strip common stop words and grab the most "noun-like" phrase if possible
+    # For now, a naive fallback: just use the first few words of visual_content
+    base_text = segment.get("visual_content") or segment.get("narration", "")
+    words = [w for w in base_text.split() if len(w) > 3]
+    query = " ".join(words[:3])
+    
+    # Overrides based on content type to ensure relevant imagery
+    if content_type == "dark_facts":
+        query = "creepy dark mystery " + query
+    elif content_type == "viral_news":
+        query = "news reporter " + query
+    elif content_type == "football_trivia":
+        query = "football soccer stadium " + query
+        
+    return query
 
 
 def _fetch_all_segment_images(script: dict, content_type: str, images_dir: pathlib.Path) -> None:
@@ -98,34 +86,64 @@ def _get_content_config(config: dict, content_type: str) -> dict:
     }
 
 
-def run_content_pipeline(content_type: str, force: bool = False) -> None:
-    """Orchestrate the full shared content pipeline for one content type."""
-    if content_type not in CONTENT_TYPES:
-        raise ValueError(f"Unknown content type: {content_type}. Valid: {CONTENT_TYPES}")
+def run_content_pipeline(content_type: str, force: bool = False):
+    """
+    Main orchestration function for generating and rendering content.
+    """
+    logger.info("==================================================")
+    logger.info("Starting pipeline for content type: %s", content_type)
+    logger.info("==================================================")
 
     config = load_manager_config()
-    type_config = _get_content_config(config, content_type)
 
-    if not should_run_for_schedule(content_type, config=config, force=force):
-        return
+    # 1. Check schedule unless forced
+    if not force:
+        type_config = _get_content_config(config, content_type)
+        schedules = type_config["schedules"]
+        should_run = False
+        for s in schedules:
+            if is_scheduled_time(s):
+                should_run = True
+                break
+                
+        if not should_run:
+            logger.info("Skipping %s — not scheduled to run now.", content_type)
+            return
 
-    _cleanup_root_temp()
-
-    run_id = uuid.uuid4().hex[:8]
-    run_dir = DEFAULT_TEMP_DIR / content_type / run_id
-    _cleanup_temp_dir(run_dir)
+    # Setup directories
+    run_dir = TEMP_DIR / content_type
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     images_dir = run_dir / "images"
     audio_dir = run_dir / "audio"
-    manim_dir = run_dir / "manim"
-    segments_dir = run_dir / "segments"
-    for d in (images_dir, audio_dir, manim_dir, segments_dir):
-        d.mkdir(parents=True, exist_ok=True)
+    video_dir = run_dir / "video"
 
     try:
-        # 1. Generate script
+        # 1. Generate Script
+        logger.info("Stage 1: Generating Script")
         if content_type == "meme_recap":
-            script = fetch_meme_script(images_dir, force=force)
+            from scripts.generators.meme_gen import get_latest_memes
+            memes = get_latest_memes()
+            if not memes:
+                logger.warning("No memes found. Aborting.")
+                return
+            # Use only one meme for a 7-second short as requested
+            meme = random.choice(memes)
+            script = {
+                "title": "Meme Recap",
+                "description": "Daily meme drop!",
+                "tags": ["memes", "funny"],
+                "segments": [
+                    {
+                        "id": 1,
+                        "narration": meme.get("title", "Funny meme"),
+                        "visual_type": "image",
+                        "visual_content": meme.get("title", ""),
+                        "image_path": meme["image_path"],
+                        "image_needed": True
+                    }
+                ]
+            }
         else:
             script = generate_script(content_type)
 
@@ -133,97 +151,48 @@ def run_content_pipeline(content_type: str, force: bool = False) -> None:
         script_path.write_text(json.dumps(script, indent=2), encoding="utf-8")
         logger.info("Script saved: %s", script_path)
 
-        # 2. Inject engagement end-card segment
-        hooks = END_CARD_HOOKS.get(content_type, ["Follow for more!"])
-        end_text = random.choice(hooks)
-        end_seg_id = max(s["id"] for s in script["segments"]) + 1
-        script["segments"].append({
-            "id": end_seg_id,
-            "narration": end_text,
-            "visual_type": "text",
-            "visual_content": end_text,
-            "image_needed": False,
-            "image_query": content_type.replace("_", " ") + " social media",
-            "image_path": "",
-            "pause_after": 0.5,
-        })
-
-        # 3. Fetch a real Pexels image for every segment
-        news_image_url = script.get("news_image_url")
-        if news_image_url and script["segments"]:
-            logger.info("Downloading GNews image for foreground overlay: %s", news_image_url)
-            try:
-                img_path = images_dir / "news_img.jpg"
-                resp = requests.get(news_image_url, timeout=30, verify=False)
-                resp.raise_for_status()
-                with open(img_path, "wb") as f:
-                    f.write(resp.content)
-                script["segments"][0]["visual_type"] = "image"
-                script["segments"][0]["image_path"] = str(img_path)
-            except Exception as e:
-                logger.warning("Failed to download news image: %s", e)
-
+        # 3. Fetch specific images if needed
+        logger.info("Stage 3: Fetching specific segment imagery")
         _fetch_all_segment_images(script, content_type, images_dir)
 
+        # 4. Generate TTS & Audio
+        logger.info("Stage 4: Generating Audio")
+        segments_audio = generate_all_audio(script["segments"], content_type, audio_dir)
 
-        # 3. Generate TTS per segment (skipped automatically for non-voice types)
-        segments_audio = generate_all_segment_audio(
-            script["segments"], str(audio_dir), content_type=content_type
-        )
+        # 5. Render individual video segments (Manim/PIL)
+        logger.info("Stage 5: Rendering Video Segments")
+        segment_videos = render_all_segments(script["segments"], content_type, segments_audio, video_dir)
 
-        # 4. Render Manim scenes (transparent overlay)
-        segment_videos = render_all_segments(
-            script["segments"], content_type, segments_audio, manim_dir
-        )
+        # 6. Fetch B-Roll
+        logger.info("Stage 6: Fetching B-Roll")
+        broll_dir = run_dir / "broll"
+        broll_path = fetch_aesthetic_broll(broll_dir)
 
-        # 5. Fetch satisfying B-Roll background
-        broll_path = None
-        try:
-            broll_path = fetch_aesthetic_broll(run_dir / "broll")
-            logger.info("B-Roll fetched: %s", broll_path)
-        except Exception as broll_exc:
-            logger.warning("B-Roll fetch failed (%s) — falling back to blur-pad", broll_exc)
-
-        # 6. Composite Manim onto B-Roll per segment, then concatenate
-        final_path = assemble_video(
-            segment_videos, segments_audio, segments_dir, broll_path=broll_path
-        )
-
-        # 7. Delivery
-        title = script["title"]
-        description = f"{title}\n\n#shorts #{content_type.replace('_', '')}"
-        tags = YOUTUBE_TAGS_BY_CONTENT_TYPE.get(content_type, ["shorts"])
+        # 7. Assemble final video
+        logger.info("Stage 7: Assembling Final Output")
+        final_video = assemble_video(broll_path, segment_videos, segments_audio, run_dir)
+        
+        # 8. Upload based on Manual Mode
+        type_config = _get_content_config(config, content_type)
         manual_mode = type_config["manual_mode"]
-        privacy_status = type_config["privacy_status"]
-
+        
         if manual_mode:
             logger.info("Manual mode ON for %s — sending video to Telegram.", content_type)
-            caption = f"🎬 <b>{content_type.replace('_', ' ').title()}</b>\n\n{title}"
-            send_video(final_path, caption)
+            send_to_telegram(final_video, f"[{content_type}] Ready for review")
         else:
-            from scripts.upload.youtube_upload import upload_video
-
-            logger.info("Manual mode OFF for %s — uploading to YouTube.", content_type)
-            url = upload_video(
-                final_path, title, description,
-                privacy_status=privacy_status,
-                tags=tags,
+            logger.info("Automatic mode ON for %s — uploading to YouTube.", content_type)
+            privacy = type_config["privacy_status"]
+            upload_video(
+                video_path=final_video,
+                title=script["title"],
+                description=script["description"],
+                tags=script["tags"],
+                privacy_status=privacy
             )
-            msg = (
-                f"✅ <b>Pipeline Success</b>\n\n"
-                f"Type: {content_type}\n"
-                f"Title: {title}\n"
-                f"Link: {url}"
-            )
-            send_message(msg)
+            
+            # Send notification to Telegram
+            send_to_telegram(final_video, f"[{content_type}] Uploaded to YouTube ({privacy})")
 
-        logger.info("Content pipeline complete for %s.", content_type)
-
-    except Exception as exc:
-        logger.error("Content pipeline failed for %s: %s", content_type, exc)
-        send_message(
-            f"❌ <b>Pipeline Failed</b>\n\n"
-            f"Type: {content_type}\n"
-            f"Error: <code>{exc}</code>"
-        )
+    except Exception as e:
+        logger.error("Pipeline failed for %s: %s", content_type, e, exc_info=True)
         raise

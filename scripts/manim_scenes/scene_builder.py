@@ -3,12 +3,10 @@ import pathlib
 import subprocess
 
 from scripts.render.image_card_renderer import render_image_card
-from scripts.render.fast_text_renderer import render_segment as render_text_segment
+from scripts.render.text_segment import render_text_segment
+from scripts.constants import VOICE_ENABLED_TYPES
 
 logger = logging.getLogger(__name__)
-
-# Content types that use TTS voice audio — duration comes from TTS length
-VOICE_ENABLED_TYPES = {"meme_recap", "explained_topic", "quiz_riddle"}
 
 # Reading speed fallback: words per second when no voice
 READING_WORDS_PER_SECOND = 2.2
@@ -16,29 +14,19 @@ MIN_SEGMENT_DURATION = 4.0
 
 
 def _reading_duration(text: str) -> float:
-    """Estimate how long a viewer needs to read the given text."""
-    word_count = len(text.split())
-    return max(word_count / READING_WORDS_PER_SECOND, MIN_SEGMENT_DURATION)
+    words = len(text.split())
+    dur = max(MIN_SEGMENT_DURATION, words / READING_WORDS_PER_SECOND)
+    return dur
 
 
 def _image_to_video(image_path: str, duration: float, output_path: str) -> str:
-    """Convert a static image to an MP4 video of the given duration."""
-    fade_d = min(0.3, duration / 4)
-    vf = (
-        f"fade=t=in:st=0:d={fade_d}:alpha=1,"
-        f"fade=t=out:st={max(0.0, duration - fade_d):.3f}:d={fade_d}:alpha=1"
-    )
+    """Convert a static image into a transparent video segment."""
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1",
         "-i", image_path,
         "-t", str(duration),
-        "-vf", vf,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "20",
-        "-pix_fmt", "yuv420p",
-        "-r", "30",
+        "-c:v", "qtrle",  # QuickTime RLE preserves transparency
         output_path,
     ]
     try:
@@ -80,9 +68,12 @@ def render_all_segments(
 
         if has_image:
             display_text = segment.get("visual_content") or segment.get("narration", "")
-            card_path = str(seg_dir / f"card_{seg_id:02d}.jpg")
+            # Ensure we save as PNG for transparency
+            card_path = str(seg_dir / f"card_{seg_id:02d}.png")
             render_image_card(image_path, display_text, content_type, card_path)
-            video_path = str(seg_dir / f"seg_{seg_id:02d}.mp4")
+            
+            # Save as MOV for transparency support in ffmpeg
+            video_path = str(seg_dir / f"seg_{seg_id:02d}.mov")
             _image_to_video(card_path, duration, video_path)
         else:
             # Fallback: text-only PIL card (transparent overlay)
@@ -99,5 +90,4 @@ def render_all_segments(
             seg_id, content_type, duration, has_image,
         )
 
-    logger.info("Rendered %d segments for %s", len(video_paths), content_type)
     return video_paths
