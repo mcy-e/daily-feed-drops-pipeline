@@ -7,6 +7,8 @@ from scripts.render.render import probe_video
 
 logger = logging.getLogger(__name__)
 
+VOICE_ENABLED_TYPES = {"meme_recap", "explained_topic", "quiz_riddle"}
+
 
 def _probe_audio_duration(audio_path: str) -> float:
     """Get audio duration via ffprobe."""
@@ -29,11 +31,27 @@ def generate_segment_audio(
     segment: dict,
     output_dir: str,
     voice: str = TTS_VOICE,
+    content_type: str = "",
 ) -> dict:
-    """Generate TTS audio for one segment. Returns segment metadata with audio_path and duration."""
+    """Generate TTS audio for one segment. Returns segment metadata with audio_path and duration.
+    
+    For non-voice content types, returns a silent stub — reading-time duration is computed in scene_builder.
+    """
     seg_id = segment["id"]
     narration = segment["narration"]
     audio_path = f"{output_dir}/seg_{seg_id:02d}.mp3"
+
+    if content_type and content_type not in VOICE_ENABLED_TYPES:
+        # Create a 0-byte stub so assembler knows audio is absent
+        open(audio_path, "wb").close()
+        return {
+            "id": seg_id,
+            "audio_path": audio_path,
+            "narration": narration,
+            "duration": 0.0,
+            "pause_after": 0.0,
+            "total_duration": 0.0,
+        }
 
     import requests
     import base64
@@ -85,6 +103,6 @@ def generate_segment_audio(
     }
 
 
-def generate_all_segment_audio(segments: list[dict], output_dir: str) -> list[dict]:
+def generate_all_segment_audio(segments: list[dict], output_dir: str, content_type: str = "") -> list[dict]:
     """Generate TTS for all segments. Returns list of audio metadata dicts."""
-    return [generate_segment_audio(seg, output_dir) for seg in segments]
+    return [generate_segment_audio(seg, output_dir, content_type=content_type) for seg in segments]

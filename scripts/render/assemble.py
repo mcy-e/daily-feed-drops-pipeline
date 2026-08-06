@@ -1,61 +1,105 @@
 import logging
+import os
 import pathlib
 import subprocess
 
+import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 logger = logging.getLogger(__name__)
 
-
-def _format_srt_time(seconds: float) -> str:
-    """Convert seconds to SRT timestamp HH:MM:SS,mmm."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds % 1) * 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+# Royalty-free loopable nature ambient audio (birds + stream)
+AMBIENT_AUDIO_URL = "https://cdn.freesound.org/previews/456/456471_5121236-lq.mp3"
+AMBIENT_FALLBACK_URL = "https://cdn.freesound.org/previews/398/398720_5121236-lq.mp3"
+AMBIENT_VOLUME = "0.18"
 
 
-def build_srt(segments_audio: list[dict]) -> str:
-    """Build cumulative SRT content from segment narration and durations."""
-    lines = []
-    cumulative = 0.0
+def _download_ambient(dest: pathlib.Path) -> str | None:
+    """Download a royalty-free ambient nature sound. Returns path or None on failure."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for url in (AMBIENT_AUDIO_URL, AMBIENT_FALLBACK_URL):
+        try:
+            resp = requests.get(url, timeout=20, verify=False)
+            resp.raise_for_status()
+            dest.write_bytes(resp.content)
+            logger.info("Ambient audio downloaded: %s", dest)
+            return str(dest)
+        except Exception as exc:
+            logger.warning("Ambient audio download failed from %s: %s", url, exc)
+    return None
 
-    for idx, seg in enumerate(segments_audio, start=1):
-        start = cumulative
-        end = cumulative + seg["duration"]
-        lines.append(str(idx))
-        lines.append(f"{_format_srt_time(start)} --> {_format_srt_time(end)}")
-        lines.append(seg["narration"])
-        lines.append("")
-        cumulative = end + seg.get("pause_after", 0.5)
 
-    return "\n".join(lines)
+def _get_segment_duration(audio_meta: dict) -> float:
+    """Return the display duration — reading-time override takes precedence over TTS."""
+    return audio_meta.get("segment_duration") or audio_meta["total_duration"]
 
 
 def composite_segment_on_broll(
     broll_path: str,
-    manim_overlay_path: str,
+    segment_video_path: str,
     audio_path: str,
     output_path: str,
     total_duration: float,
+    ambient_path: str | None = None,
 ) -> str:
-    """Overlay transparent Manim MOV on top of B-Roll video with TTS audio."""
-    filter_graph = (
-        "[0:v]loop=loop=-1:size=32767:start=0,"
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setpts=PTS-STARTPTS[bg];"
-        "[1:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,setpts=PTS-STARTPTS[fg];"
-        "[bg][fg]overlay=0:0:format=auto[out]"
-    )
+    """Composite a segment video card on top of B-Roll with TTS + optional ambient audio."""
+    # Check if the segment video is already a full MP4 (image card) or a transparent MOV overlay
+    seg_ext = pathlib.Path(segment_video_path).suffix.lower()
+    is_opaque = seg_ext == ".mp4"
+
+    if is_opaque:
+        # The segment is a full opaque MP4 image card — scale and center it on the B-Roll
+        filter_graph = (
+            "[0:v]loop=loop=-1:size=32767:start=0,"
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setpts=PTS-STARTPTS[bg];"
+            "[1:v]scale=900:-2:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+            "setpts=PTS-STARTPTS[card];"
+            "[bg][card]overlay=(W-w)/2:(H-h)/2:format=auto[out]"
+        )
+    else:
+        # Transparent MOV overlay (text card fallback)
+        filter_graph = (
+            "[0:v]loop=loop=-1:size=32767:start=0,"
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setpts=PTS-STARTPTS[bg];"
+            "[1:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+            "setpts=PTS-STARTPTS[fg];"
+            "[bg][fg]overlay=0:0:format=auto[out]"
+        )
+
     cmd = [
         "ffmpeg", "-y",
-        "-stream_loop", "-1",
-        "-i", broll_path,
-        "-i", manim_overlay_path,
+        "-stream_loop", "-1", "-i", broll_path,
+        "-i", segment_video_path,
         "-i", audio_path,
-        "-filter_complex", filter_graph,
-        "-map", "[out]",
-        "-map", "2:a:0",
+    ]
+
+    if ambient_path:
+        cmd += ["-stream_loop", "-1", "-i", ambient_path]
+        audio_filter = (
+            f"[2:a]volume=1.0[tts];"
+            f"[3:a]volume={AMBIENT_VOLUME}[amb];"
+            f"[tts][amb]amix=inputs=2:duration=first[aout]"
+        )
+        full_filter = f"{filter_graph};{audio_filter}"
+        cmd += [
+            "-filter_complex", full_filter,
+            "-map", "[out]",
+            "-map", "[aout]",
+        ]
+    else:
+        cmd += [
+            "-filter_complex", filter_graph,
+            "-map", "[out]",
+            "-map", "2:a:0",
+        ]
+
+    cmd += [
         "-t", str(total_duration),
         "-c:v", "libx264",
         "-preset", "fast",
@@ -64,15 +108,32 @@ def composite_segment_on_broll(
         "-shortest",
         output_path,
     ]
+
     logger.info(
-        "Compositing segment: broll=%s + manim=%s",
-        pathlib.Path(broll_path).name, pathlib.Path(manim_overlay_path).name,
+        "Compositing segment: broll=%s + card=%s (%.2fs)",
+        pathlib.Path(broll_path).name,
+        pathlib.Path(segment_video_path).name,
+        total_duration,
     )
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:
-        logger.error("Composite failed: %s", exc.stderr[-500:])
+        logger.error("Composite failed: %s", exc.stderr[-600:])
         raise RuntimeError(f"Composite failed: {exc.stderr[-300:]}") from exc
+    return output_path
+
+
+def _make_silent_audio(duration: float, output_path: str) -> str:
+    """Generate a silent audio track of the given duration."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"anullsrc=r=44100:cl=mono",
+        "-t", str(duration),
+        "-c:a", "aac",
+        output_path,
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
     return output_path
 
 
@@ -108,36 +169,41 @@ def assemble_video(
     output_dir: pathlib.Path,
     broll_path: str = None,
 ) -> str:
-    """Composite Manim overlays onto B-Roll (or fallback blur-pad), then concatenate. Returns final video path."""
+    """Composite image cards onto B-Roll with ambient audio, then concatenate. Returns final video path."""
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    ambient_path = _download_ambient(output_dir / "ambient.mp3")
 
     composited_paths = []
     for video, audio_meta in zip(segment_videos, segment_audios):
+        seg_duration = _get_segment_duration(audio_meta)
         out = str(output_dir / f"composited_{audio_meta['id']:02d}.mp4")
+
+        audio_path = audio_meta["audio_path"]
+
+        # For non-voice segments, the audio may be silence — check file size
+        if not pathlib.Path(audio_path).exists() or pathlib.Path(audio_path).stat().st_size < 512:
+            silent_path = str(output_dir / f"silent_{audio_meta['id']:02d}.aac")
+            audio_path = _make_silent_audio(seg_duration, silent_path)
+
         if broll_path:
             composite_segment_on_broll(
-                broll_path, video, audio_meta["audio_path"], out, audio_meta["total_duration"]
+                broll_path, video, audio_path, out, seg_duration, ambient_path
             )
         else:
-            # Fallback: simple mux without B-Roll
-            from scripts.constants import FFMPEG_CRF, FFMPEG_PRESET, RENDER_WIDTH, RENDER_HEIGHT, BLUR_SIGMA
-            filter_graph = (
-                "split[bg][fg];"
-                f"[bg]scale={RENDER_WIDTH}:{RENDER_HEIGHT}:force_original_aspect_ratio=increase,"
-                f"crop={RENDER_WIDTH}:{RENDER_HEIGHT},gblur=sigma={BLUR_SIGMA}[blurred];"
-                f"[fg]scale={RENDER_WIDTH}:{RENDER_HEIGHT}[sharp];"
-                "[blurred][sharp]overlay=(W-w)/2:(H-h)/2"
-            )
+            from scripts.constants import FFMPEG_CRF, FFMPEG_PRESET
             cmd = [
                 "ffmpeg", "-y",
-                "-i", video, "-i", audio_meta["audio_path"],
-                "-filter_complex", filter_graph,
-                "-map", "[sharp]", "-map", "1:a:0",
-                "-t", str(audio_meta["total_duration"]),
+                "-i", video,
+                "-i", audio_path,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-t", str(seg_duration),
                 "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", str(FFMPEG_CRF),
-                "-c:a", "aac", out,
+                "-c:a", "aac",
+                out,
             ]
             subprocess.run(cmd, capture_output=True, text=True, check=True)
+
         composited_paths.append(out)
 
     final_path = str(output_dir / "final.mp4")
