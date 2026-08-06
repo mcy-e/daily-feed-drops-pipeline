@@ -72,7 +72,7 @@ Requirements:
 - Segment 4: drop a surprising fact or twist about the choice
 - Final segment: ask viewers to comment their answer
 - 5-6 segments total
-- End with a direct call-to-action: "Comment A or B!"""",
+- End with a direct call-to-action: 'Comment A or B!'""",
 
     "football_trivia": """Create a 45-60 second football trivia video about: {topic}
 

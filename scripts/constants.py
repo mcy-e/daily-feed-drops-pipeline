@@ -126,7 +126,7 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
 TTS_VOICE = "en-US-ChristopherNeural"
 
-SCHEDULE_TOLERANCE_MINUTES = 15
+SCHEDULE_TOLERANCE_MINUTES = 29
 
 # Topic pools / prompt seeds per content type (one chosen at random per run)
 CONTENT_TOPIC_POOLS = {

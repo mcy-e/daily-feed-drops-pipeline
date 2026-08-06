@@ -63,7 +63,10 @@ def is_scheduled_time(
     tolerance_minutes: int = SCHEDULE_TOLERANCE_MINUTES,
     now: datetime.datetime | None = None,
 ) -> bool:
-    """Check if ``now`` falls within tolerance of any slot in ``scheduled_times``."""
+    """Check if ``now`` falls within tolerance of any slot in ``scheduled_times``.
+
+    Checks both UTC and UTC+1 so manager times set in BST always match GitHub Actions UTC runners.
+    """
     if isinstance(scheduled_times, dict):
         logger.error(
             "is_scheduled_time received a schedules mapping — pass one content type's slot list"
@@ -74,27 +77,35 @@ def is_scheduled_time(
         return False
 
     if now is None:
-        now = datetime.datetime.now()
+        now = datetime.datetime.utcnow()
 
-    current_minutes = now.hour * 60 + now.minute
+    # Check at both UTC and UTC+1 to cover BST / local time configurations
+    times_to_check = [now, now + datetime.timedelta(hours=1)]
 
-    for slot in scheduled_times:
-        if not isinstance(slot, str):
-            logger.warning("Invalid schedule entry (expected HH:MM string): %r", slot)
-            continue
-        try:
-            parts = slot.strip().split(":")
-            if len(parts) < 2:
-                raise ValueError("missing minutes")
-            h, m = int(parts[0]), int(parts[1])
-            sched_minutes = h * 60 + m
-            diff = abs(current_minutes - sched_minutes)
-            diff = min(diff, 24 * 60 - diff)
+    for check_time in times_to_check:
+        current_minutes = check_time.hour * 60 + check_time.minute
 
-            if diff <= tolerance_minutes:
-                return True
-        except ValueError:
-            logger.warning("Invalid time format in schedule: %s", slot)
+        for slot in scheduled_times:
+            if not isinstance(slot, str):
+                logger.warning("Invalid schedule entry (expected HH:MM string): %r", slot)
+                continue
+            try:
+                parts = slot.strip().split(":")
+                if len(parts) < 2:
+                    raise ValueError("missing minutes")
+                h, m = int(parts[0]), int(parts[1])
+                sched_minutes = h * 60 + m
+                diff = abs(current_minutes - sched_minutes)
+                diff = min(diff, 24 * 60 - diff)
+
+                if diff <= tolerance_minutes:
+                    logger.info(
+                        "Schedule match: slot %s within %dmin of %s",
+                        slot, diff, check_time.strftime("%H:%M"),
+                    )
+                    return True
+            except ValueError:
+                logger.warning("Invalid time format in schedule: %s", slot)
 
     return False
 
