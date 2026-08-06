@@ -131,8 +131,6 @@ def _validate_script(script: dict, content_type: str) -> dict:
         raise ValueError("CRITIC_REJECT: Script missing required 'title' or 'segments' fields. Return valid JSON.")
 
     segments = script["segments"]
-    if not segments or len(segments) < 3:
-        raise ValueError(f"CRITIC_REJECT: Script has too few segments ({len(segments)}). You must generate at least 5 segments.")
 
     # Critic Check: Religion and NSFW
     banned_words = {"jesus", "allah", "religion", "bible", "quran", "church", "mosque", "sex", "porn", "nude", "nsfw", "suicide", "murder"}

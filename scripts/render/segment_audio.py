@@ -39,6 +39,8 @@ def generate_segment_audio(
     """
     seg_id = segment["id"]
     narration = segment["narration"]
+    import pathlib
+    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
     audio_path = f"{output_dir}/seg_{seg_id:02d}.mp3"
 
     if content_type and content_type not in VOICE_ENABLED_TYPES:
