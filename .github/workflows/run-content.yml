@@ -74,7 +74,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python -m scripts.run_content_pipeline \
               --type "${{ inputs.content_type }}" \
-              ${{ inputs.force == 'true' && '--force' || '' }}
+              ${{ (inputs.force == true || inputs.force == 'true') && '--force' || '' }}
           else
             HOUR=$(date -u +%H)
             MINUTE=$(date -u +%M)
