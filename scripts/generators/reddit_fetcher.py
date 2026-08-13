@@ -17,12 +17,39 @@ SUBREDDITS = {
         "r/todayilearned",
         "r/interestingasfuck",
         "r/Mindblown",
+        "r/UnbelievableStuff",
+        "r/Weird",
+        "r/mildlyinteresting",
+        "r/OutOfTheLoop",
+        "r/theydidthemath",
+        "r/science",
+        "r/history",
+        "r/Natureisfuckinglit",
+        "r/woahdude",
+        "r/educationalgifs",
     ],
     "shower_thoughts": [
         "r/Showerthoughts",
         "r/Lightbulb",
         "r/LifeProTips",
+        "r/philosophy",
+        "r/RandomThoughts",
+        "r/DoesAnybodyElse",
+        "r/Existential_crisis",
+        "r/mildlyinteresting",
+        "r/CrazyIdeas",
+        "r/self",
+        "r/introspection",
+        "r/AskReddit",
     ],
+}
+
+# Only block truly toxic/explicit content — not words that appear in normal facts
+BANNED_WORDS = {
+    "sex", "porn", "nude", "nsfw", "rape", "pedophile",
+    "politics", "election", "democrat", "republican", "trump", "biden",
+    "religion", "jesus", "allah", "god", "church",
+    "suicide", "self-harm",
 }
 
 
@@ -50,32 +77,34 @@ def fetch_reddit_script(content_type: str) -> dict | None:
     if not subreddits:
         return None
 
-    random.shuffle(subreddits)
+    # Shuffle and try all subreddits until we collect enough posts
+    shuffled = list(subreddits)
+    random.shuffle(shuffled)
     all_posts = []
-    for sub in subreddits:
-        all_posts.extend(_fetch_reddit_posts(sub))
-        if len(all_posts) >= 10:
+
+    for sub in shuffled:
+        posts = _fetch_reddit_posts(sub)
+        all_posts.extend(posts)
+        if len(all_posts) >= 20:
             break
 
     if not all_posts:
-        logger.error("No Reddit posts found for %s", content_type)
-        return None
+        logger.warning("All Reddit sources failed for %s — using hardcoded fallback", content_type)
+        return _get_fallback_script(content_type)
 
-    # Filter posts based on banned words and NSFW tags
-    banned_words = {"sex", "porn", "nude", "nsfw", "suicide", "murder", "kill", "rape", "death", "politics", "religion", "god", "jesus"}
     valid_posts = []
     for p in all_posts:
         if p.get("over_18") or p.get("is_video"):
             continue
         title_lower = p.get("title", "").lower()
-        if not any(banned in title_lower for banned in banned_words):
+        if not any(banned in title_lower for banned in BANNED_WORDS):
             valid_posts.append(p)
 
     if not valid_posts:
-        logger.error("No valid Reddit posts found for %s after filtering", content_type)
+        logger.warning("All posts filtered for %s — using hardcoded fallback", content_type)
         return _get_fallback_script(content_type)
 
-    # Pick a high-scoring post
+    # Pick top scoring post
     scored = sorted(valid_posts, key=lambda p: p.get("score", 0), reverse=True)
     post = scored[0] if scored else random.choice(valid_posts)
 
@@ -119,16 +148,48 @@ def fetch_reddit_script(content_type: str) -> dict | None:
         "segments": [segment],
     }
 
+FALLBACK_DARK_FACTS = [
+    "A day on Venus is longer than a year on Venus. It rotates so slowly that the Sun rises only once every 243 Earth days.",
+    "There are more possible iterations of a game of chess than there are atoms in the observable universe.",
+    "Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid.",
+    "Oxford University is older than the Aztec Empire. Teaching began there around 1096 AD.",
+    "The average cloud weighs about 1.1 million pounds — yet it floats because the water droplets are spread over a huge area.",
+    "If you removed all the empty space from atoms in the human body, all 7 billion people on Earth would fit into an apple.",
+    "Woolly mammoths were still alive when the Great Pyramid of Giza was being built.",
+    "Sharks are older than trees. Sharks have existed for around 450 million years, trees only about 360 million.",
+    "There are more trees on Earth than stars in the Milky Way galaxy.",
+    "Honey never spoils. Archaeologists have found 3,000-year-old honey in Egyptian tombs that was still edible.",
+]
+
+FALLBACK_SHOWER_THOUGHTS = [
+    "Your future self is a complete stranger who will have to deal with every decision you make today.",
+    "The word 'bed' actually looks like a bed.",
+    "When you're a kid, you don't realize you're also watching your parents be kids for the very first time.",
+    "You can't hum while holding your nose closed. Go ahead. Try it.",
+    "Every time you shuffle a deck of cards, the order has almost certainly never existed before in history.",
+    "Somewhere right now, someone is hearing their favorite song for the very first time.",
+    "Nothing is on fire. Fire is on things.",
+    "The brain named itself.",
+    "At some point, your parents put you down and never picked you up again.",
+    "Whoever invented the clock had to decide what time it was first.",
+]
+
 def _get_fallback_script(content_type: str) -> dict:
     if content_type == "dark_facts":
-        text = "Did you know that bananas are slightly radioactive? Eating 10,000 at once could be lethal."
+        text = random.choice(FALLBACK_DARK_FACTS)
+        description = f"Mind-blowing fact 🤯 {text[:80]}... #darkfacts #didyouknow #shorts"
+        tags = ["darkfacts", "mindblowing", "facts", "didyouknow", "shorts"]
+        title = "Dark Fact of the Day"
     else:
-        text = "Water is just a potion that cures exhaustion but gives you a debuff that makes you need to pee."
-        
+        text = random.choice(FALLBACK_SHOWER_THOUGHTS)
+        description = f"This will break your brain 🚿💭 {text[:80]}... #showerthoughts #shorts"
+        tags = ["showerthoughts", "deepthoughts", "mindblown", "shorts"]
+        title = "Shower Thought of the Day"
+
     return {
-        "title": "Interesting Fact",
-        "description": "Mind blown! #shorts #mindblown",
-        "tags": ["shorts", "mindblown"],
+        "title": title,
+        "description": description,
+        "tags": tags,
         "segments": [{
             "id": 1,
             "narration": text,
