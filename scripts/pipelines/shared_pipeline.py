@@ -4,6 +4,7 @@ import os
 import pathlib
 import random
 import subprocess
+import uuid
 
 from scripts.constants import TEMP_DIR, MANAGER_CONFIG_PATH
 from scripts.generators.broll_fetcher import fetch_aesthetic_broll
@@ -108,9 +109,21 @@ def _get_or_fetch_image(segment: dict, images_dir: pathlib.Path, content_type: s
         query = "thought philosophy " + query
 
     try:
-        return fetch_pexels_image(query, images_dir)
+        path = fetch_pexels_image(query, images_dir)
+        if path:
+            return path
     except Exception as exc:
         logger.warning("Pexels fallback failed for '%s': %s", query, exc)
+    
+    # Ultimate fallback: generate a beautiful gradient or solid color image
+    fallback_path = images_dir / f"fallback_{uuid.uuid4().hex[:6]}.jpg"
+    try:
+        from PIL import Image
+        img = Image.new('RGB', (1080, 1920), color=(random.randint(20,50), random.randint(20,50), random.randint(20,50)))
+        img.save(fallback_path)
+        return str(fallback_path)
+    except Exception as exc:
+        logger.error("Failed to create fallback image: %s", exc)
         return None
 
 

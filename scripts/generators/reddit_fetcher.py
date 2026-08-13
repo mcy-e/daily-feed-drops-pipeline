@@ -61,13 +61,27 @@ def fetch_reddit_script(content_type: str) -> dict | None:
         logger.error("No Reddit posts found for %s", content_type)
         return None
 
+    # Filter posts based on banned words and NSFW tags
+    banned_words = {"sex", "porn", "nude", "nsfw", "suicide", "murder", "kill", "rape", "death", "politics", "religion", "god", "jesus"}
+    valid_posts = []
+    for p in all_posts:
+        if p.get("over_18") or p.get("is_video"):
+            continue
+        title_lower = p.get("title", "").lower()
+        if not any(banned in title_lower for banned in banned_words):
+            valid_posts.append(p)
+
+    if not valid_posts:
+        logger.error("No valid Reddit posts found for %s after filtering", content_type)
+        return _get_fallback_script(content_type)
+
     # Pick a high-scoring post
-    scored = sorted(all_posts, key=lambda p: p.get("score", 0), reverse=True)
-    post = scored[0] if scored else random.choice(all_posts)
+    scored = sorted(valid_posts, key=lambda p: p.get("score", 0), reverse=True)
+    post = scored[0] if scored else random.choice(valid_posts)
 
     title = _clean_text(post.get("title", ""))
     if not title:
-        return None
+        return _get_fallback_script(content_type)
 
     # Try to grab the post image if it's a direct image link
     image_url = None
@@ -103,4 +117,23 @@ def fetch_reddit_script(content_type: str) -> dict | None:
         "description": DESCRIPTIONS.get(content_type, title),
         "tags": TAGS.get(content_type, ["shorts"]),
         "segments": [segment],
+    }
+
+def _get_fallback_script(content_type: str) -> dict:
+    if content_type == "dark_facts":
+        text = "Did you know that bananas are slightly radioactive? Eating 10,000 at once could be lethal."
+    else:
+        text = "Water is just a potion that cures exhaustion but gives you a debuff that makes you need to pee."
+        
+    return {
+        "title": "Interesting Fact",
+        "description": "Mind blown! #shorts #mindblown",
+        "tags": ["shorts", "mindblown"],
+        "segments": [{
+            "id": 1,
+            "narration": text,
+            "visual_type": "image",
+            "visual_content": text,
+            "image_needed": True
+        }]
     }
