@@ -6,7 +6,7 @@
       "platform": "youtube",
       "content_types": [
         {
-          "id": 2,
+          "id": 1,
           "name": "meme_recap",
           "api_key": null,
           "source_url": null,
@@ -14,74 +14,14 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "15:19"
+            "["
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 14.285714285714286
+          "weight": 33.333333333333336
         },
         {
-          "id": 3,
-          "name": "quiz_riddle",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "06:13"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
-          "id": 4,
-          "name": "viral_news",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "12:11"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
-          "id": 5,
-          "name": "football_trivia",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "21:14"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
-          "id": 7,
-          "name": "explained_topic",
-          "api_key": null,
-          "source_url": null,
-          "automation_endpoint": null,
-          "github_repo": "mcy-e/daily-feed-drops-pipeline",
-          "github_workflow": "run-content.yml",
-          "schedule": [
-            "18:23"
-          ],
-          "mode": "manual",
-          "privacy_status": "private",
-          "weight": 14.285714285714286
-        },
-        {
-          "id": 8,
+          "id": 2,
           "name": "dark_facts",
           "api_key": null,
           "source_url": null,
@@ -89,26 +29,26 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "03:17"
+            "6:13"
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 14.285714285714286
+          "weight": 33.333333333333336
         },
         {
-          "id": 9,
-          "name": "would_you_rather",
+          "id": 3,
+          "name": "shower_thoughts",
           "api_key": null,
           "source_url": null,
           "automation_endpoint": null,
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "09:21"
+            "20:21"
           ],
           "mode": "manual",
           "privacy_status": "private",
-          "weight": 14.285714285714286
+          "weight": 33.333333333333336
         }
       ]
     }
