@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 TARGET_W = 1080
 TARGET_H = 1920
-CARD_W = 940
+CARD_W = 820
 CARD_MARGIN = 40
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -104,10 +104,10 @@ def render_image_card(
     # Paste photo directly below text
     card.paste(photo, (0, text_block_h))
     
-    # 4. Paste card into center of transparent 1080x1920 canvas
+    # 4. Paste card into transparent 1080x1920 canvas (lifted slightly above center)
     canvas = Image.new("RGBA", (TARGET_W, TARGET_H), (0, 0, 0, 0))
     paste_x = (TARGET_W - CARD_W) // 2
-    paste_y = (TARGET_H - card_h) // 2
+    paste_y = (TARGET_H - card_h) // 3
     
     # Optional: add a slight drop shadow or rounded corners, but simple paste is fine
     canvas.paste(card, (paste_x, paste_y))
