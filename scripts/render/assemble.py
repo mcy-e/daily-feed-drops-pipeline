@@ -17,24 +17,26 @@ CARD_OVERLAY_W = 700
 
 
 def _generate_ambient(dest: pathlib.Path) -> str | None:
-    """Generate ambient night atmosphere sound using FFmpeg noise filters."""
+    """Generate ambient night atmosphere using a single brown noise source.
+    Brown noise closely resembles wind, rain, and night atmosphere."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     out_path = str(dest)
     cmd = [
-        "ffmpeg", "-y", "-f", "lavfi",
-        "-i", "anoisesrc=c=brown:r=44100:a=0.25",
-        "-i", "anoisesrc=c=pink:r=44100:a=0.12",
-        "-filter_complex", "amix=inputs=2:duration=first,volume=2.0",
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.4",
         "-t", "120",
-        "-c:a", "aac",
+        "-c:a", "aac", "-b:a", "128k",
         out_path,
     ]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.warning("Ambient generation failed: %s", result.stderr[-300:])
+            return None
         logger.info("Ambient audio generated: %s", out_path)
         return out_path
     except Exception as exc:
-        logger.warning("Ambient generation failed: %s", exc)
+        logger.warning("Ambient generation exception: %s", exc)
         return None
 
 
