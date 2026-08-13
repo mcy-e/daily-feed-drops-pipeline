@@ -132,7 +132,7 @@ def _render_card_to_video(image_path: str, text: str, content_type: str,
     """Render the meme card image and convert it to a silent video segment."""
     output_dir.mkdir(parents=True, exist_ok=True)
     card_path = str(output_dir / "card.png")
-    video_path = str(output_dir / "segment.mov")
+    video_path = str(output_dir / "segment.mp4")
 
     render_image_card(image_path, text, content_type, card_path)
 
@@ -140,7 +140,10 @@ def _render_card_to_video(image_path: str, text: str, content_type: str,
         "ffmpeg", "-y",
         "-loop", "1", "-i", card_path,
         "-t", str(duration),
-        "-c:v", "qtrle",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        "-crf", "23",
         video_path,
     ]
     subprocess.run(cmd, capture_output=True, check=True)

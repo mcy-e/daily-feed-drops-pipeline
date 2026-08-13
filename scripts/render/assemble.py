@@ -10,7 +10,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
-AMBIENT_VOLUME = "0.18"
+AMBIENT_VOLUME = "0.35"
 
 def _generate_ambient(dest: pathlib.Path) -> str | None:
     """Generate continuous non-repeating nature ambient sound (wind/water) using FFmpeg noise."""
@@ -54,15 +54,14 @@ def composite_segment_on_broll(
     is_opaque = seg_ext == ".mp4"
 
     if is_opaque:
-        # The segment is a full opaque MP4 image card — scale and center it on the B-Roll
+        # Place card in the top third of the B-Roll (y=320 = 1920/6)
         filter_graph = (
             "[0:v]loop=loop=-1:size=32767:start=0,"
             "scale=1080:1920:force_original_aspect_ratio=increase,"
             "crop=1080:1920,setpts=PTS-STARTPTS[bg];"
-            "[1:v]scale=900:-2:force_original_aspect_ratio=decrease,"
-            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+            "[1:v]scale=700:-2:force_original_aspect_ratio=decrease,"
             "setpts=PTS-STARTPTS[card];"
-            "[bg][card]overlay=(W-w)/2:(H-h)/2:format=auto[out]"
+            "[bg][card]overlay=(W-w)/2:320:format=auto[out]"
         )
     else:
         # Transparent MOV overlay (text card fallback)
@@ -86,9 +85,9 @@ def composite_segment_on_broll(
     if ambient_path:
         cmd += ["-stream_loop", "-1", "-i", ambient_path]
         audio_filter = (
-            f"[2:a]volume=1.0[tts];"
+            f"[2:a]volume=2.0[tts];"
             f"[3:a]volume={AMBIENT_VOLUME}[amb];"
-            f"[tts][amb]amix=inputs=2:duration=first[aout]"
+            f"[tts][amb]amix=inputs=2:duration=first,loudnorm[aout]"
         )
         full_filter = f"{filter_graph};{audio_filter}"
         cmd += [
