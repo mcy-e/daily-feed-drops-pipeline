@@ -57,13 +57,19 @@ def fetch_aesthetic_broll(dest_dir: pathlib.Path) -> str:
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:
-        logger.error("yt-dlp failed: %s. Generating black fallback video.", exc.stderr)
-        cmd_fallback = [
-            "ffmpeg", "-y", "-f", "lavfi", 
-            "-i", "color=c=black:s=1080x1920:r=30:d=65", 
-            "-c:v", "libx264", "-preset", "fast", 
-            str(final_path)
-        ]
-        subprocess.run(cmd_fallback, capture_output=True, check=True)
+        logger.error("yt-dlp failed: %s. Generating Pexels fallback video.", exc.stderr)
+        try:
+            from scripts.generators.pexels_video import fetch_pexels_fallback_video
+            return fetch_pexels_fallback_video(dest_dir)
+        except Exception as pex_exc:
+            logger.error("Pexels fallback failed: %s. Using solid black video.", pex_exc)
+            cmd_fallback = [
+                "ffmpeg", "-y", "-f", "lavfi", 
+                "-i", "color=c=black:s=1080x1920:r=30:d=65", 
+                "-c:v", "libx264", "-preset", "fast", 
+                str(final_path)
+            ]
+            subprocess.run(cmd_fallback, capture_output=True, check=True)
+            return str(final_path)
         
     return str(final_path)

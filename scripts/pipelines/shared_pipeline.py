@@ -147,13 +147,9 @@ def _render_card_to_video(image_path: str, text: str, content_type: str,
     return video_path
 
 
-def _reading_duration(text: str, wps: float = 2.2, minimum: float = 5.0) -> float:
+def _reading_duration(text: str, wps: float = 2.2, minimum: float = 20.0) -> float:
     return max(minimum, len(text.split()) / wps)
 
-
-def _meme_has_sound() -> bool:
-    """Memes have a 30% chance of getting owl/cockroach sound, 70% silence."""
-    return random.random() < 0.30
 
 
 def _get_content_config(config: dict, content_type: str) -> dict:
@@ -231,11 +227,7 @@ def run_content_pipeline(content_type: str, force: bool = False):
 
         # ── 6. Build ambient audio ─────────────────────────────────────────
         logger.info("Stage 6: Generating ambient audio")
-        if content_type == "meme_recap" and not _meme_has_sound():
-            ambient_path = None
-            logger.info("Meme: no ambient sound (70%% silent chance)")
-        else:
-            ambient_path = _pick_ambient_sound(run_dir / "audio")
+        ambient_path = _pick_ambient_sound(run_dir / "audio")
 
         # ── 7. Assemble ────────────────────────────────────────────────────
         logger.info("Stage 7: Assembling final video")
@@ -250,7 +242,7 @@ def run_content_pipeline(content_type: str, force: bool = False):
             "total_duration": duration,
             "segment_duration": duration,
         }
-        # Create silent stub audio
+        # Create silent stub audio so assemble_video doesn't fail
         (run_dir / "audio").mkdir(parents=True, exist_ok=True)
         silent_cmd = [
             "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",

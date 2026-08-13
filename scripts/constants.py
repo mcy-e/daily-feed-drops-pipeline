@@ -201,7 +201,7 @@ VIRAL_NEWS_SUBCATEGORIES = {
     "tech": "technology startup AI gadget",
 }
 
-MEME_API_URL = "https://meme-api.com/gimme/5"
+MEME_API_URL = "https://meme-api.com/gimme/dankmemes+memes+shitposting/10"
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 PEXELS_VIDEO_SEARCH_URL = "https://api.pexels.com/videos/search"
 GNEWS_SEARCH_URL = "https://gnews.io/api/v4/search"
