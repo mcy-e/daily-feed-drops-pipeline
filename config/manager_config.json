@@ -29,7 +29,7 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "6:13"
+            "17:00"
           ],
           "mode": "manual",
           "privacy_status": "private",
