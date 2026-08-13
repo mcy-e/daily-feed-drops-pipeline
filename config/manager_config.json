@@ -14,7 +14,7 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "15:00"
+            "12:21"
           ],
           "mode": "manual",
           "privacy_status": "private",
@@ -29,7 +29,7 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "17:00"
+            "18:17"
           ],
           "mode": "manual",
           "privacy_status": "private",
@@ -44,7 +44,7 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "10:00"
+            "08:14"
           ],
           "mode": "manual",
           "privacy_status": "private",
