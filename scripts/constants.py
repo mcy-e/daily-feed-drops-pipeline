@@ -15,7 +15,7 @@ TEMP_DIR = PROJECT_ROOT / "temp"
 CHANNELS: list = []
 
 # Content types that use TTS voice (all others are silent + ambient only)
-VOICE_ENABLED_TYPES = {"meme_recap", "explained_topic", "quiz_riddle"}
+VOICE_ENABLED_TYPES = set()  # No voice types — all content is text-on-image
 
 DEFAULT_API_PORT = 8001
 
@@ -117,14 +117,9 @@ DEFAULT_TEMP_DIR = PROJECT_ROOT / "temp"
 MANAGER_CONFIG_PATH = PROJECT_ROOT / "config" / "manager_config.json"
 
 CONTENT_TYPES = (
-    "explained_topic",
-    "dark_facts",
-    "football_trivia",
-    "viral_news",
-    "quiz_riddle",
     "meme_recap",
-    "motivation_content",
-    "would_you_rather",
+    "dark_facts",
+    "shower_thoughts",
 )
 
 PEXELS_API_KEY_ENV_VAR = "PEXELS_API_KEY"

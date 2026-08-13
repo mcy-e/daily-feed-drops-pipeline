@@ -112,3 +112,26 @@ def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
     }
     logger.info("Built meme_recap script with %d meme", len(segments))
     return script
+
+
+def fetch_meme_script_simple() -> dict | None:
+    """Wrapper that fetches one meme without requiring a dest_dir argument."""
+    import tempfile, pathlib
+    dest = pathlib.Path(tempfile.mkdtemp()) / "memes"
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        script = fetch_meme_script(dest_dir=dest)
+        if not script or not script.get("segments"):
+            return None
+        # Keep only the first segment
+        script["segments"] = script["segments"][:1]
+        seg = script["segments"][0]
+        title = seg.get("narration", "Meme of the Day")
+        script["title"] = title[:80]
+        script["description"] = f"😂 {title} #meme #funny #viral #shorts"
+        script["tags"] = ["meme", "funny", "viral", "shorts", "gaming"]
+        return script
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("fetch_meme_script_simple failed: %s", exc)
+        return None

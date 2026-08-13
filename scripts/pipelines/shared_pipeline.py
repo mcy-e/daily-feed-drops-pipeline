@@ -1,182 +1,303 @@
 import json
 import logging
+import os
 import pathlib
 import random
+import subprocess
 
-from scripts.constants import CONTENT_TYPES, TEMP_DIR, MANAGER_CONFIG_PATH
+from scripts.constants import TEMP_DIR, MANAGER_CONFIG_PATH
 from scripts.generators.broll_fetcher import fetch_aesthetic_broll
-from scripts.generators.content_gen import generate_script
+from scripts.generators.meme_fetcher import fetch_meme_script_simple
+from scripts.generators.reddit_fetcher import fetch_reddit_script
 from scripts.generators.image_fetcher import fetch_pexels_image
-from scripts.generators.meme_fetcher import fetch_meme_script
-from scripts.pipelines.schedule import is_scheduled_time, load_manager_config
+from scripts.pipelines.schedule import load_manager_config, is_scheduled_time
 from scripts.render.assemble import assemble_video
-from scripts.render.segment_audio import generate_all_segment_audio
-from scripts.manim_scenes.scene_builder import render_all_segments
-from scripts.notifications.telegram import send_video as telegram_send_video
-from scripts.upload.youtube_upload import upload_video
+from scripts.render.image_card_renderer import render_image_card
+from scripts.notifications.telegram import send_video as telegram_send_video, send_message as telegram_send_message
 
 logger = logging.getLogger(__name__)
 
-END_CARD_HOOKS = {
-    "dark_facts": ["Did you know this? Comment below!", "Hit subscribe if this gave you chills."],
-    "would_you_rather": ["Comment A or B!", "What would you choose? Let us know!"],
-    "football_trivia": ["Did you guess it? Subscribe for more!", "Drop a like if you love football!"],
-    "viral_news": ["What do you think? Comment below!", "Follow for daily news drops!"],
-    "explained_topic": ["Did you learn something? Like & Subscribe!", "Follow for daily explainers!"],
-    "meme_recap": ["Send this to a friend!", "Follow for daily memes!"],
-    "quiz_riddle": ["Did you get it right? Comment below!", "Subscribe for more riddles!"],
-    "motivation_content": ["Save this for later!", "Follow to stay motivated!"],
-    "kids_content": ["Like and subscribe for more fun!", "Share with your friends!"],
-}
+CONTENT_TYPES = ("meme_recap", "dark_facts", "shower_thoughts")
+
+# Sound config: 70% night atmosphere, 30% owl or cockroach
+SOUND_WEIGHTS = {"night": 0.70, "owl": 0.15, "cockroach": 0.15}
 
 
-def _derive_image_query(segment: dict, content_type: str) -> str:
-    """Generate a decent stock photo query based on the segment text."""
-    # We strip common stop words and grab the most "noun-like" phrase if possible
-    # For now, a naive fallback: just use the first few words of visual_content
-    base_text = segment.get("visual_content") or segment.get("narration", "")
-    words = [w for w in base_text.split() if len(w) > 3]
-    query = " ".join(words[:3])
-    
-    # Overrides based on content type to ensure relevant imagery
+def _pick_ambient_sound(output_dir: pathlib.Path) -> str:
+    """Generate ambient audio. 70% night atmosphere, 15% owl, 15% cockroach (via ffmpeg filters)."""
+    choice = random.random()
+    out = str(output_dir / "ambient.aac")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if choice < 0.70:
+        # Night atmosphere: mix brown + pink noise at low volume
+        cmd = [
+            "ffmpeg", "-y", "-f", "lavfi",
+            "-i", "anoisesrc=c=brown:r=44100:a=0.08",
+            "-i", "anoisesrc=c=pink:r=44100:a=0.04",
+            "-filter_complex", "amix=inputs=2:duration=first",
+            "-t", "90", "-c:a", "aac", out,
+        ]
+        label = "night"
+    elif choice < 0.85:
+        # Owl: narrow band filtered noise at ~800Hz
+        cmd = [
+            "ffmpeg", "-y", "-f", "lavfi",
+            "-i", "anoisesrc=c=white:r=44100:a=0.05",
+            "-af", "bandpass=f=800:width_type=h:w=200,volume=0.3",
+            "-t", "90", "-c:a", "aac", out,
+        ]
+        label = "owl"
+    else:
+        # Cockroach/insect: higher freq noise
+        cmd = [
+            "ffmpeg", "-y", "-f", "lavfi",
+            "-i", "anoisesrc=c=white:r=44100:a=0.04",
+            "-af", "bandpass=f=3000:width_type=h:w=500,volume=0.25",
+            "-t", "90", "-c:a", "aac", out,
+        ]
+        label = "cockroach"
+
+    try:
+        subprocess.run(cmd, capture_output=True, check=True)
+        logger.info("Ambient sound generated: %s", label)
+        return out
+    except Exception as exc:
+        logger.warning("Ambient generation failed (%s): %s", label, exc)
+        return None
+
+
+def _download_image(url: str, dest: pathlib.Path) -> str | None:
+    """Download an image from a URL and save it to dest."""
+    import requests, urllib3
+    urllib3.disable_warnings()
+    try:
+        resp = requests.get(url, timeout=15, verify=False)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return str(dest)
+    except Exception as exc:
+        logger.warning("Image download failed from %s: %s", url, exc)
+        return None
+
+
+def _get_or_fetch_image(segment: dict, images_dir: pathlib.Path, content_type: str) -> str | None:
+    """Return a local image path for the segment, downloading or fetching from Pexels if needed."""
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    # Already downloaded
+    existing = segment.get("image_path", "")
+    if existing and pathlib.Path(existing).exists():
+        return existing
+
+    # Reddit posts may provide a direct image URL
+    reddit_url = segment.get("reddit_image_url")
+    if reddit_url:
+        dest = images_dir / f"reddit_{hash(reddit_url) % 99999}.jpg"
+        path = _download_image(reddit_url, dest)
+        if path:
+            return path
+
+    # Fallback: Pexels search
+    query_text = segment.get("visual_content") or segment.get("narration", "")
+    words = [w for w in query_text.split() if len(w) > 3]
+    query = " ".join(words[:4])
     if content_type == "dark_facts":
-        query = "creepy dark mystery " + query
-    elif content_type == "viral_news":
-        query = "news reporter " + query
-    elif content_type == "football_trivia":
-        query = "football soccer stadium " + query
-        
-    return query
+        query = "dark mystery " + query
+    elif content_type == "shower_thoughts":
+        query = "thought philosophy " + query
+
+    try:
+        return fetch_pexels_image(query, images_dir)
+    except Exception as exc:
+        logger.warning("Pexels fallback failed for '%s': %s", query, exc)
+        return None
 
 
-def _fetch_all_segment_images(script: dict, content_type: str, images_dir: pathlib.Path) -> None:
-    """Download a real Pexels image for the first segment and re-use it for all subsequent segments.
-    This creates a single static image holding position over the B-Roll for the whole video."""
-    first_image_path = None
-    for segment in script["segments"]:
-        # Skip segments that already have an image (e.g. meme images or news images)
-        if segment.get("image_path") and pathlib.Path(segment["image_path"]).exists():
-            segment["visual_type"] = "image"
-            if not first_image_path:
-                first_image_path = segment["image_path"]
-            continue
+def _render_card_to_video(image_path: str, text: str, content_type: str,
+                          duration: float, output_dir: pathlib.Path) -> str:
+    """Render the meme card image and convert it to a silent video segment."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    card_path = str(output_dir / "card.png")
+    video_path = str(output_dir / "segment.mov")
 
-        if first_image_path:
-            # Re-use the same image to keep the background static while text updates
-            segment["image_path"] = first_image_path
-            segment["visual_type"] = "image"
-            continue
+    render_image_card(image_path, text, content_type, card_path)
 
-        query = _derive_image_query(segment, content_type)
-        try:
-            image_path = fetch_pexels_image(query, images_dir)
-            segment["image_path"] = image_path
-            segment["visual_type"] = "image"
-            first_image_path = image_path
-            logger.info("Fetched static image for video: query='%s'", query)
-        except Exception as exc:
-            logger.warning("Could not fetch image for segment %d ('%s'): %s — keeping text card", segment["id"], query, exc)
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1", "-i", card_path,
+        "-t", str(duration),
+        "-c:v", "qtrle",
+        video_path,
+    ]
+    subprocess.run(cmd, capture_output=True, check=True)
+    return video_path
+
+
+def _reading_duration(text: str, wps: float = 2.2, minimum: float = 5.0) -> float:
+    return max(minimum, len(text.split()) / wps)
+
+
+def _meme_has_sound() -> bool:
+    """Memes have a 30% chance of getting owl/cockroach sound, 70% silence."""
+    return random.random() < 0.30
 
 
 def _get_content_config(config: dict, content_type: str) -> dict:
-    """Extract per-content-type settings from manager config."""
+    normalized = config if "schedules" in config else {}
     return {
-        "manual_mode": config.get("manual_mode", {}).get(content_type, True),
-        "privacy_status": config.get("privacy_status", {}).get(content_type, "private"),
-        "schedules": config.get("schedules", {}).get(content_type, []),
+        "manual_mode": normalized.get("manual_mode", {}).get(content_type, True),
+        "privacy_status": normalized.get("privacy_status", {}).get(content_type, "private"),
+        "schedules": normalized.get("schedules", {}).get(content_type, []),
     }
 
 
 def run_content_pipeline(content_type: str, force: bool = False):
-    """
-    Main orchestration function for generating and rendering content.
-    """
-    logger.info("==================================================")
-    logger.info("Starting pipeline for content type: %s", content_type)
-    logger.info("==================================================")
+    logger.info("=" * 50)
+    logger.info("Pipeline START: %s (force=%s)", content_type, force)
+    logger.info("=" * 50)
+
+    if content_type not in CONTENT_TYPES:
+        logger.error("Unknown content type: %s. Valid: %s", content_type, CONTENT_TYPES)
+        return
 
     config = load_manager_config()
 
-    # 1. Check schedule unless forced
     if not force:
-        type_config = _get_content_config(config, content_type)
-        schedules = type_config["schedules"]
-        should_run = False
-        for s in schedules:
-            if is_scheduled_time(s):
-                should_run = True
-                break
-                
-        if not should_run:
-            logger.info("Skipping %s — not scheduled to run now.", content_type)
+        type_cfg = _get_content_config(config, content_type)
+        schedules = type_cfg["schedules"]
+        if not is_scheduled_time(schedules):
+            logger.info("Not scheduled to run now — skipping %s", content_type)
             return
 
-    # Setup directories
     run_dir = TEMP_DIR / content_type
     run_dir.mkdir(parents=True, exist_ok=True)
-
     images_dir = run_dir / "images"
-    audio_dir = run_dir / "audio"
-    video_dir = run_dir / "video"
+    seg_dir = run_dir / "segment"
 
     try:
-        # 1. Generate Script
-        logger.info("Stage 1: Generating Script")
+        # ── 1. Fetch content ──────────────────────────────────────────────
+        logger.info("Stage 1: Fetching content")
         if content_type == "meme_recap":
-            meme_script = fetch_meme_script()
-            if not meme_script:
-                logger.warning("No memes found. Aborting.")
-                return
-            script = meme_script
+            script = fetch_meme_script_simple()
         else:
-            script = generate_script(content_type)
+            script = fetch_reddit_script(content_type)
 
-        script_path = run_dir / "script.json"
-        script_path.write_text(json.dumps(script, indent=2), encoding="utf-8")
-        logger.info("Script saved: %s", script_path)
+        if not script or not script.get("segments"):
+            logger.error("No content fetched for %s — aborting", content_type)
+            telegram_send_message(f"[{content_type}] Pipeline aborted: no content fetched.")
+            return
 
-        # 3. Fetch specific images if needed
-        logger.info("Stage 3: Fetching specific segment imagery")
-        _fetch_all_segment_images(script, content_type, images_dir)
+        (run_dir / "script.json").write_text(
+            json.dumps(script, indent=2), encoding="utf-8"
+        )
+        segment = script["segments"][0]
+        text = segment.get("visual_content") or segment.get("narration", "")
+        logger.info("Content fetched: %s", text[:80])
 
-        # 4. Generate TTS & Audio
-        logger.info("Stage 4: Generating Audio")
-        segments_audio = generate_all_segment_audio(script["segments"], content_type, audio_dir)
+        # ── 2. Fetch image ────────────────────────────────────────────────
+        logger.info("Stage 2: Fetching image")
+        image_path = _get_or_fetch_image(segment, images_dir, content_type)
+        if not image_path:
+            logger.error("No image available — aborting")
+            telegram_send_message(f"[{content_type}] Pipeline aborted: image fetch failed.")
+            return
+        segment["image_path"] = image_path
 
-        # 5. Render individual video segments (Manim/PIL)
-        logger.info("Stage 5: Rendering Video Segments")
-        segment_videos = render_all_segments(script["segments"], content_type, segments_audio, video_dir)
+        # ── 3. Calculate duration ─────────────────────────────────────────
+        duration = _reading_duration(text)
+        logger.info("Video duration: %.1fs", duration)
 
-        # 6. Fetch B-Roll
-        logger.info("Stage 6: Fetching B-Roll")
-        broll_dir = run_dir / "broll"
-        broll_path = fetch_aesthetic_broll(broll_dir)
+        # ── 4. Render card to video ────────────────────────────────────────
+        logger.info("Stage 4: Rendering meme card")
+        segment_video = _render_card_to_video(image_path, text, content_type, duration, seg_dir)
 
-        # 7. Assemble final video
-        logger.info("Stage 7: Assembling Final Output")
-        final_video = assemble_video(broll_path, segment_videos, segments_audio, run_dir)
-        
-        # 8. Upload based on Manual Mode
-        type_config = _get_content_config(config, content_type)
-        manual_mode = type_config["manual_mode"]
-        
-        if manual_mode:
-            logger.info("Manual mode ON for %s — sending video to Telegram.", content_type)
-            telegram_send_video(final_video, f"[{content_type}] Ready for review")
+        # ── 5. Fetch B-Roll ────────────────────────────────────────────────
+        logger.info("Stage 5: Fetching B-Roll")
+        broll_path = fetch_aesthetic_broll(run_dir / "broll")
+
+        # ── 6. Build ambient audio ─────────────────────────────────────────
+        logger.info("Stage 6: Generating ambient audio")
+        if content_type == "meme_recap" and not _meme_has_sound():
+            ambient_path = None
+            logger.info("Meme: no ambient sound (70%% silent chance)")
         else:
-            logger.info("Automatic mode ON for %s — uploading to YouTube.", content_type)
-            privacy = type_config["privacy_status"]
-            upload_video(
-                video_path=final_video,
-                title=script["title"],
-                description=script["description"],
-                tags=script["tags"],
-                privacy_status=privacy
-            )
-            
-            # Send notification to Telegram after upload
-            telegram_send_video(final_video, f"[{content_type}] Uploaded to YouTube ({privacy})")
+            ambient_path = _pick_ambient_sound(run_dir / "audio")
 
-    except Exception as e:
-        logger.error("Pipeline failed for %s: %s", content_type, e, exc_info=True)
+        # ── 7. Assemble ────────────────────────────────────────────────────
+        logger.info("Stage 7: Assembling final video")
+
+        # Build a minimal audio_meta that assemble_video expects
+        audio_meta = {
+            "id": 1,
+            "audio_path": str(run_dir / "audio" / "silent.aac"),
+            "narration": text,
+            "duration": 0.0,
+            "pause_after": 0.0,
+            "total_duration": duration,
+            "segment_duration": duration,
+        }
+        # Create silent stub audio
+        (run_dir / "audio").mkdir(parents=True, exist_ok=True)
+        silent_cmd = [
+            "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",
+            "-t", str(duration), "-c:a", "aac",
+            audio_meta["audio_path"],
+        ]
+        subprocess.run(silent_cmd, capture_output=True, check=True)
+
+        final_video = assemble_video(
+            segment_videos=[segment_video],
+            segment_audios=[audio_meta],
+            output_dir=run_dir / "output",
+            broll_path=broll_path,
+        )
+
+        # Overlay ambient if we have it
+        if ambient_path and pathlib.Path(ambient_path).exists():
+            dubbed_path = str(run_dir / "output" / "final_dubbed.mp4")
+            cmd_dub = [
+                "ffmpeg", "-y",
+                "-i", final_video,
+                "-i", ambient_path,
+                "-filter_complex", "[1:a]volume=0.25[amb];[0:a][amb]amix=inputs=2:duration=first[outa]",
+                "-map", "0:v", "-map", "[outa]",
+                "-c:v", "copy", "-c:a", "aac",
+                dubbed_path,
+            ]
+            result = subprocess.run(cmd_dub, capture_output=True)
+            if result.returncode == 0:
+                final_video = dubbed_path
+                logger.info("Ambient audio mixed into final video")
+
+        # ── 8. Send to Telegram ────────────────────────────────────────────
+        logger.info("Stage 8: Sending to Telegram")
+        type_cfg = _get_content_config(config, content_type)
+        manual_mode = type_cfg["manual_mode"]
+
+        caption = f"[{content_type.replace('_', ' ').title()}] {text[:100]}"
+        telegram_send_video(final_video, caption)
+        logger.info("Pipeline COMPLETE for %s", content_type)
+
+        if not manual_mode:
+            logger.info("Auto mode — also uploading to YouTube")
+            try:
+                from scripts.upload.youtube_upload import upload_video
+                upload_video(
+                    video_path=final_video,
+                    title=script["title"],
+                    description=script["description"],
+                    tags=script["tags"],
+                    privacy_status=type_cfg["privacy_status"],
+                )
+            except Exception as exc:
+                logger.error("YouTube upload failed: %s", exc)
+                telegram_send_message(f"[{content_type}] YouTube upload FAILED: {exc}")
+
+    except Exception as exc:
+        logger.error("Pipeline CRASHED for %s: %s", content_type, exc, exc_info=True)
+        try:
+            telegram_send_message(f"[{content_type}] Pipeline CRASHED: {exc}")
+        except Exception:
+            pass
         raise

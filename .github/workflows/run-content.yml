@@ -1,8 +1,10 @@
-﻿name: Run Content Pipeline
+name: Run Content Pipeline
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '13 6 * * *'   # dark_facts
+    - cron: '19 13 * * *'  # meme_recap
+    - cron: '21 20 * * *'  # shower_thoughts
   workflow_dispatch:
     inputs:
       content_type:
@@ -10,13 +12,9 @@ on:
         required: true
         type: choice
         options:
-          - explained_topic
-          - dark_facts
-          - would_you_rather
-          - football_trivia
-          - viral_news
-          - quiz_riddle
           - meme_recap
+          - dark_facts
+          - shower_thoughts
       force:
         description: 'Force run (bypass schedule check)'
         required: false
@@ -29,6 +27,7 @@ permissions:
 jobs:
   run-content:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,19 +40,18 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/share/swift
           df -h
 
       - name: Install system dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install yt-dlp
 
       - name: Reconstruct Google OAuth tokens
         env:
@@ -72,12 +70,16 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python -m scripts.run_content_pipeline --type "${{ inputs.content_type }}" ${{ inputs.force && '--force' || '' }}
+            python -m scripts.run_content_pipeline \
+              --type "${{ inputs.content_type }}" \
+              ${{ inputs.force == 'true' && '--force' || '' }}
           else
-            for type in explained_topic dark_facts would_you_rather football_trivia viral_news quiz_riddle meme_recap; do
-              python -m scripts.run_content_pipeline --type "$type" || true
+            HOUR=$(date -u +%H)
+            MINUTE=$(date -u +%M)
+            echo "UTC time: $HOUR:$MINUTE"
+            for type in meme_recap dark_facts shower_thoughts; do
+              python -m scripts.run_content_pipeline --type "$type" || echo "[$type] failed, continuing"
             done
           fi
