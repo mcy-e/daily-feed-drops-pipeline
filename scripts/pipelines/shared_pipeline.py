@@ -228,31 +228,18 @@ def run_content_pipeline(content_type: str, force: bool = False):
         logger.info("Stage 5: Fetching B-Roll")
         broll_path = fetch_aesthetic_broll(run_dir / "broll")
 
-        # ── 6. Build ambient audio ─────────────────────────────────────────
-        logger.info("Stage 6: Generating ambient audio")
-        ambient_path = _pick_ambient_sound(run_dir / "audio")
+        # ── 6. Assemble (audio is handled inside assemble_video) ───────────────
+        logger.info("Stage 6: Assembling final video")
 
-        # ── 7. Assemble ────────────────────────────────────────────────────
-        logger.info("Stage 7: Assembling final video")
-
-        # Build a minimal audio_meta that assemble_video expects
         audio_meta = {
             "id": 1,
-            "audio_path": str(run_dir / "audio" / "silent.aac"),
+            "audio_path": "",
             "narration": text,
             "duration": 0.0,
             "pause_after": 0.0,
             "total_duration": duration,
             "segment_duration": duration,
         }
-        # Create silent stub audio so assemble_video doesn't fail
-        (run_dir / "audio").mkdir(parents=True, exist_ok=True)
-        silent_cmd = [
-            "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",
-            "-t", str(duration), "-c:a", "aac",
-            audio_meta["audio_path"],
-        ]
-        subprocess.run(silent_cmd, capture_output=True, check=True)
 
         final_video = assemble_video(
             segment_videos=[segment_video],
@@ -260,23 +247,6 @@ def run_content_pipeline(content_type: str, force: bool = False):
             output_dir=run_dir / "output",
             broll_path=broll_path,
         )
-
-        # Overlay ambient if we have it
-        if ambient_path and pathlib.Path(ambient_path).exists():
-            dubbed_path = str(run_dir / "output" / "final_dubbed.mp4")
-            cmd_dub = [
-                "ffmpeg", "-y",
-                "-i", final_video,
-                "-i", ambient_path,
-                "-filter_complex", "[1:a]volume=0.25[amb];[0:a][amb]amix=inputs=2:duration=first[outa]",
-                "-map", "0:v", "-map", "[outa]",
-                "-c:v", "copy", "-c:a", "aac",
-                dubbed_path,
-            ]
-            result = subprocess.run(cmd_dub, capture_output=True)
-            if result.returncode == 0:
-                final_video = dubbed_path
-                logger.info("Ambient audio mixed into final video")
 
         # ── 8. Send to Telegram ────────────────────────────────────────────
         logger.info("Stage 8: Sending to Telegram")

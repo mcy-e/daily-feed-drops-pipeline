@@ -5,10 +5,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-TARGET_W = 1080
-TARGET_H = 1920
 CARD_W = 700
 CARD_MARGIN = 36
+
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
     candidates = [
@@ -21,6 +20,7 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
         if pathlib.Path(p).exists():
             return ImageFont.truetype(p, size)
     return ImageFont.load_default()
+
 
 def _wrap_lines(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: ImageDraw.ImageDraw) -> list[str]:
     words = text.split()
@@ -38,81 +38,70 @@ def _wrap_lines(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: I
         lines.append(current)
     return lines
 
+
 def render_image_card(
     image_path: str,
     text: str,
     content_type: str,
     output_path: str,
 ) -> str:
-    """Render a classic meme-style card (white box, black text, image below) on a transparent 1080x1920 canvas."""
-    # Ensure output is PNG for transparency
-    if output_path.lower().endswith(".jpg") or output_path.lower().endswith(".jpeg"):
+    """Render a meme-style card (text on top, image below) and save ONLY the card as PNG.
+    No full-frame canvas — the card is composited directly onto B-Roll by ffmpeg overlay."""
+    if not output_path.lower().endswith(".png"):
         output_path = output_path.rsplit(".", 1)[0] + ".png"
 
-    # 1. Load and resize the photo
+    # Load and resize the photo to card width
     try:
         photo = Image.open(image_path).convert("RGB")
     except Exception as e:
         logger.warning("Could not open image %s: %s", image_path, e)
-        photo = Image.new("RGB", (CARD_W, 600), (50, 50, 50))
-        
+        photo = Image.new("RGB", (CARD_W, 400), (50, 50, 50))
+
     ratio = photo.height / photo.width
-    new_h = int(CARD_W * ratio)
-    
-    # Cap image height so card stays compact in the top third
-    if new_h > 650:
-        new_h = 650
-        new_w = int(new_h / ratio)
-        photo = photo.resize((new_w, new_h), Image.LANCZOS)
-        # Pad sides with black to reach CARD_W
-        padded = Image.new("RGB", (CARD_W, new_h), (0, 0, 0))
-        padded.paste(photo, ((CARD_W - new_w) // 2, 0))
+    photo_h = int(CARD_W * ratio)
+
+    # Keep photo height compact so card fits in top third of a 1920px reel
+    if photo_h > 500:
+        photo_h = 500
+        photo_w = int(photo_h / ratio)
+        photo = photo.resize((photo_w, photo_h), Image.LANCZOS)
+        padded = Image.new("RGB", (CARD_W, photo_h), (0, 0, 0))
+        padded.paste(photo, ((CARD_W - photo_w) // 2, 0))
         photo = padded
     else:
-        photo = photo.resize((CARD_W, new_h), Image.LANCZOS)
+        photo = photo.resize((CARD_W, photo_h), Image.LANCZOS)
 
-    # 2. Prepare the text block
-    font_size = 56
+    # Build the text block
+    font_size = 52
     font = _load_font(font_size)
-    # Temporary draw object for measuring
     temp_img = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(temp_img)
-    
     max_text_w = CARD_W - (CARD_MARGIN * 2)
     lines = _wrap_lines(text, font, max_text_w, draw)
-    while len(lines) > 8 and font_size > 36:
+
+    while len(lines) > 7 and font_size > 32:
         font_size -= 4
         font = _load_font(font_size)
         lines = _wrap_lines(text, font, max_text_w, draw)
-        
-    line_h = font_size + 12
+
+    line_h = font_size + 14
     text_block_h = len(lines) * line_h + (CARD_MARGIN * 2)
 
-    # 3. Create the white meme card
-    card_h = text_block_h + photo.height
+    # Compose the card: white background, black text on top, photo below
+    card_h = text_block_h + photo_h
     card = Image.new("RGB", (CARD_W, card_h), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    
-    # Draw text
+
     y = CARD_MARGIN
     for line in lines:
         lw = int(draw.textlength(line, font=font))
         x = (CARD_W - lw) // 2
-        draw.text((x, y), line, font=font, fill=(0, 0, 0))
+        draw.text((x, y), line, font=font, fill=(20, 20, 20))
         y += line_h
-        
-    # Paste photo directly below text
+
     card.paste(photo, (0, text_block_h))
-    
-    # 4. Paste card into transparent 1080x1920 canvas (lifted slightly above center)
-    canvas = Image.new("RGBA", (TARGET_W, TARGET_H), (0, 0, 0, 0))
-    paste_x = (TARGET_W - CARD_W) // 2
-    # Place card firmly in the top third — 1920 / 6 = 320px from top
-    paste_y = TARGET_H // 6
-    
-    # Optional: add a slight drop shadow or rounded corners, but simple paste is fine
-    canvas.paste(card, (paste_x, paste_y))
-    
-    canvas.save(output_path, "PNG")
-    logger.info("Meme card rendered: %s", output_path)
+
+    # Save just the card — no full-frame canvas, no black borders
+    card.save(output_path, "PNG")
+    logger.info("Card rendered: %s (%dx%d)", output_path, CARD_W, card_h)
     return output_path
