@@ -47,6 +47,7 @@ def fetch_aesthetic_broll(dest_dir: pathlib.Path) -> str:
     # yt-dlp can download just a section using --download-sections
     cmd = [
         "yt-dlp",
+        "--force-ipv4",
         "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
         "--download-sections", f"*{start_time}-{start_time + 65}",
         "--output", str(final_path),
