@@ -2,9 +2,10 @@ name: Run Content Pipeline
 
 on:
   schedule:
-    - cron: '13 6 * * *'   # dark_facts
-    - cron: '19 13 * * *'  # meme_recap
-    - cron: '21 20 * * *'  # shower_thoughts
+    - cron: '0 7 * * *'   # meme_recap post 1
+    - cron: '0 11 * * *'  # meme_recap post 2
+    - cron: '0 15 * * *'  # meme_recap post 3
+    - cron: '0 19 * * *'  # meme_recap post 4
   workflow_dispatch:
     inputs:
       content_type:
@@ -13,8 +14,6 @@ on:
         type: choice
         options:
           - meme_recap
-          - dark_facts
-          - shower_thoughts
       force:
         description: 'Force run (bypass schedule check)'
         required: false
@@ -27,7 +26,7 @@ permissions:
 jobs:
   run-content:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,16 +69,14 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_BROLL_FOLDER_ID: ${{ secrets.GDRIVE_BROLL_FOLDER_ID }}
+          GDRIVE_MEMES_FOLDER_ID: ${{ secrets.GDRIVE_MEMES_FOLDER_ID }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python -m scripts.run_content_pipeline \
               --type "${{ inputs.content_type }}" \
               ${{ (inputs.force == true || inputs.force == 'true') && '--force' || '' }}
           else
-            HOUR=$(date -u +%H)
-            MINUTE=$(date -u +%M)
-            echo "UTC time: $HOUR:$MINUTE"
-            for type in meme_recap dark_facts shower_thoughts; do
-              python -m scripts.run_content_pipeline --type "$type" || echo "[$type] failed, continuing"
-            done
-          fi
+            python -m scripts.run_content_pipeline --type "meme_recap" --force
+          fi

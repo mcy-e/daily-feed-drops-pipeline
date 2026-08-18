@@ -118,8 +118,6 @@ MANAGER_CONFIG_PATH = PROJECT_ROOT / "config" / "manager_config.json"
 
 CONTENT_TYPES = (
     "meme_recap",
-    "dark_facts",
-    "shower_thoughts",
 )
 
 PEXELS_API_KEY_ENV_VAR = "PEXELS_API_KEY"
