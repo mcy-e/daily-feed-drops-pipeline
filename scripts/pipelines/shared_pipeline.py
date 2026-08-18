@@ -18,7 +18,7 @@ from scripts.notifications.telegram import send_video as telegram_send_video, se
 
 logger = logging.getLogger(__name__)
 
-CONTENT_TYPES = ("meme_recap", "dark_facts", "shower_thoughts")
+CONTENT_TYPES = ("meme_recap",)
 
 # Sound config: 70% night atmosphere, 30% owl or cockroach
 SOUND_WEIGHTS = {"night": 0.70, "owl": 0.15, "cockroach": 0.15}
@@ -271,6 +271,15 @@ def run_content_pipeline(content_type: str, force: bool = False):
             except Exception as exc:
                 logger.error("YouTube upload failed: %s", exc)
                 telegram_send_message(f"[{content_type}] YouTube upload FAILED: {exc}")
+
+        # ── 9. Cleanup Custom Memes ─────────────────────────────────────────
+        gdrive_id = segment.get("gdrive_meme_id")
+        if gdrive_id:
+            logger.info("Video delivered successfully. Deleting custom meme from Drive...")
+            from scripts.utils.gdrive import get_drive_service, delete_file
+            srv = get_drive_service()
+            if srv:
+                delete_file(srv, gdrive_id)
 
     except Exception as exc:
         logger.error("Pipeline CRASHED for %s: %s", content_type, exc, exc_info=True)

@@ -6,45 +6,56 @@ import uuid
 import subprocess
 
 from scripts.utils.retry import retry_with_backoff
+from scripts.utils.gdrive import get_drive_service, list_files_in_folder, download_file
 
 logger = logging.getLogger(__name__)
 
-# A large variety of 1+ hour gaming and satisfying gameplay videos
 GAMING_VIDEOS = [
-    # Minecraft Parkour
     "https://www.youtube.com/watch?v=n_Dv4JMmAO8",
     "https://www.youtube.com/watch?v=aHkLqNn_2dM",
-    "https://www.youtube.com/watch?v=J3sA0oVnQ90",
-    "https://www.youtube.com/watch?v=XoQdFzQJ-1w",
-    
-    # GTA V Racing / Parkour
     "https://www.youtube.com/watch?v=f2nNnJgA-tY",
     "https://www.youtube.com/watch?v=Wji-BZ0oC1w",
-    "https://www.youtube.com/watch?v=Kz6XqO1e1fM",
-    
-    # Subway Surfers / Mobile
-    "https://www.youtube.com/watch?v=o0v-m_21EHU",
-    "https://www.youtube.com/watch?v=ehvG7L-MIEg",
-    
-    # Satisfying / ASMR / Kinetic Sand
-    "https://www.youtube.com/watch?v=XhxwGJaGqL8",
-    "https://www.youtube.com/watch?v=jZ1S0uA56nE",
-    "https://www.youtube.com/watch?v=o-YBDTqX_ZU",
+    "https://www.youtube.com/watch?v=XhxwGJaGqL8"
 ]
+
+def _fetch_broll_gdrive(dest_dir: pathlib.Path) -> str | None:
+    service = get_drive_service()
+    folder_id = os.environ.get("GDRIVE_BROLL_FOLDER_ID")
+    if not service or not folder_id:
+        return None
+        
+    files = list_files_in_folder(service, folder_id, mime_type_prefix="video/")
+    if not files:
+        logger.info("No videos found in Drive B-Roll folder.")
+        return None
+        
+    file = random.choice(files)
+    file_id = file['id']
+    file_name = file['name']
+    
+    final_path = dest_dir / f"broll_gdrive_{uuid.uuid4().hex[:8]}.mp4"
+    logger.info(f"Downloading B-Roll from Drive: {file_name}")
+    
+    if download_file(service, file_id, str(final_path)):
+        return str(final_path)
+    return None
 
 @retry_with_backoff(max_retries=3, delays=(5, 10, 15))
 def fetch_aesthetic_broll(dest_dir: pathlib.Path) -> str:
-    """Download a random 65-second clip from a 1-hour gaming video using yt-dlp."""
+    """Download a random gaming B-Roll from Drive or YouTube."""
     dest_dir.mkdir(parents=True, exist_ok=True)
-    video_url = random.choice(GAMING_VIDEOS)
     
+    # 1. Try Google Drive first
+    drive_broll = _fetch_broll_gdrive(dest_dir)
+    if drive_broll:
+        return drive_broll
+        
+    # 2. Fallback to YouTube
+    video_url = random.choice(GAMING_VIDEOS)
     final_path = dest_dir / f"broll_gaming_{uuid.uuid4().hex[:8]}.mp4"
     logger.info("Fetching continuous 65s gaming B-Roll from %s", video_url)
     
-    # We want a random 65s chunk. We'll grab from somewhere between minute 5 and minute 45.
     start_time = random.randint(300, 2700)
-    
-    # yt-dlp can download just a section using --download-sections
     cmd = [
         "yt-dlp",
         "--force-ipv4",
@@ -57,20 +68,14 @@ def fetch_aesthetic_broll(dest_dir: pathlib.Path) -> str:
     
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return str(final_path)
     except subprocess.CalledProcessError as exc:
-        logger.error("yt-dlp failed: %s. Generating Pexels fallback video.", exc.stderr)
-        try:
-            from scripts.generators.pexels_video import fetch_pexels_fallback_video
-            return fetch_pexels_fallback_video(dest_dir)
-        except Exception as pex_exc:
-            logger.error("Pexels fallback failed: %s. Using solid black video.", pex_exc)
-            cmd_fallback = [
-                "ffmpeg", "-y", "-f", "lavfi", 
-                "-i", "color=c=black:s=1080x1920:r=30:d=65", 
-                "-c:v", "libx264", "-preset", "fast", 
-                str(final_path)
-            ]
-            subprocess.run(cmd_fallback, capture_output=True, check=True)
-            return str(final_path)
-        
-    return str(final_path)
+        logger.error("yt-dlp failed: %s. Generating black video fallback.", exc.stderr)
+        cmd_fallback = [
+            "ffmpeg", "-y", "-f", "lavfi", 
+            "-i", "color=c=black:s=1080x1920:r=30:d=65", 
+            "-c:v", "libx264", "-preset", "fast", 
+            str(final_path)
+        ]
+        subprocess.run(cmd_fallback, capture_output=True, check=True)
+        return str(final_path)

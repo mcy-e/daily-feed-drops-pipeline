@@ -16,24 +16,49 @@ CARD_OVERLAY_Y = 280
 CARD_OVERLAY_W = 700
 
 
-def _generate_ambient(dest: pathlib.Path) -> str | None:
-    """Generate ambient night atmosphere using a single brown noise source.
-    Brown noise closely resembles wind, rain, and night atmosphere."""
+import random
+import uuid
+
+AMBIENT_VIDEOS = [
+    "https://www.youtube.com/watch?v=njCDZWTI-xg", # 10 hours crickets and owls
+    "https://www.youtube.com/watch?v=1sJ7nL-JzH0", # 10 hours night ambience
+    "https://www.youtube.com/watch?v=W0oZfWwBweU", # Night crickets
+]
+
+def _generate_ambient(dest: pathlib.Path, duration: float = 120.0) -> str | None:
+    """Fetch a real, random slice of night ambient audio (crickets/owls) via yt-dlp."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     out_path = str(dest)
+    
+    video_url = random.choice(AMBIENT_VIDEOS)
+    # Pick a random start time in the first 5 hours of the 10-hour video
+    start_time = random.randint(300, 18000)
+    
+    logger.info("Fetching real ambient audio slice from %s", video_url)
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.4",
-        "-t", "120",
-        "-c:a", "aac", "-b:a", "128k",
-        out_path,
+        "yt-dlp",
+        "--force-ipv4",
+        "--format", "bestaudio[ext=m4a]/bestaudio/best",
+        "--download-sections", f"*{start_time}-{start_time + duration + 5}",
+        "--output", out_path,
+        "--force-keyframes-at-cuts",
+        video_url
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.warning("Ambient generation failed: %s", result.stderr[-300:])
-            return None
-        logger.info("Ambient audio generated: %s", out_path)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return out_path
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to fetch real ambient audio: %s. Falling back to synth.", exc.stderr)
+        
+        # Synthetic fallback if yt-dlp fails
+        synth_cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.4",
+            "-t", str(duration),
+            "-c:a", "aac", "-b:a", "128k",
+            out_path,
+        ]
+        subprocess.run(synth_cmd, capture_output=True, text=True, check=True)
         return out_path
     except Exception as exc:
         logger.warning("Ambient generation exception: %s", exc)
@@ -159,7 +184,8 @@ def assemble_video(
     """Overlay card videos onto B-Roll with ambient audio. Returns final video path."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    ambient_path = _generate_ambient(output_dir / "ambient.aac")
+    total_video_duration = sum(_get_segment_duration(a) for a in segment_audios)
+    ambient_path = _generate_ambient(output_dir / "ambient.m4a", duration=total_video_duration)
 
     composited_paths = []
     for video, audio_meta in zip(segment_videos, segment_audios):
