@@ -64,7 +64,7 @@ def composite_meme(
     cmd = [
         "ffmpeg", "-y",
         "-stream_loop", "-1", "-i", broll_path,
-        "-loop", "1", "-i", image_path
+        "-f", "image2", "-loop", "1", "-i", image_path
     ]
     
     if audio_file:

@@ -63,12 +63,17 @@ def _download_image(url: str, dest: pathlib.Path) -> str | None:
     try:
         r = requests.get(url, timeout=30, verify=False)
         r.raise_for_status()
-        # Reject images that are too tall (portrait screenshots / stories)
+        
+        # Verify and re-encode image to ensure 100% ffmpeg compatibility
         with Image.open(io.BytesIO(r.content)) as img:
             w, h = img.size
             if w == 0 or h / w > 2.0:
                 return None
-        dest.write_bytes(r.content)
+                
+            # Convert to RGB (drops alpha/transparency from PNG/WebP) to ensure standard JPG
+            rgb_img = img.convert("RGB")
+            rgb_img.save(dest, format="JPEG", quality=90)
+            
         return str(dest)
     except Exception as exc:
         logger.debug("Image download failed (%s): %s", url, exc)
