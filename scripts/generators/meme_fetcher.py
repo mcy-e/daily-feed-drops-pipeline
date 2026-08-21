@@ -26,10 +26,22 @@ logger = logging.getLogger(__name__)
 
 # Subreddits to pull from — shuffled each run for variety
 _SUBREDDITS = [
-    "dankmemes", "memes", "shitposting", "me_irl", "funny",
-    "memeeconomy", "historymemes", "AdviceAnimals",
-    "ProgrammerHumor", "surrealmemes", "SpecialSnowflake",
-    "bonehurtingjuice", "okbuddyretard",
+    # English & Edgy/Dank
+    "dankmemes", "shitposting", "HolUp", "dank_meme", "2meirl4meirl",
+    "SipsTea", "Discordmemes", "Offensivejokes", "ImFinnaGoToHell",
+    "cursedcomments", "meme", "memes",
+    
+    # International / Multi-language
+    "ich_iel",          # German
+    "moi_dlvv",         # French
+    "yo_elvr",          # Spanish
+    "ani_bm",           # Hebrew
+    "ik_ihe",           # Dutch
+    "eu_nvr",           # Portuguese
+    "Polska_wpz",       # Polish
+    "LatinoPeopleTwitter",
+    "MemeItaliani",
+    "memesESP",
 ]
 
 # Only block hard ToS violations — dark humour is allowed
