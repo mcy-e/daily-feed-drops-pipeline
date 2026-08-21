@@ -1,170 +1,188 @@
-import logging
-import pathlib
-import uuid
-import random
-import os
+import datetime
 import io
+import logging
+import os
+import pathlib
+import random
+import uuid
 
 import requests
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from scripts.constants import PROJECT_ROOT
-from scripts.utils.retry import retry_with_backoff
-from scripts.utils.gdrive import get_drive_service, download_json_file, upload_json_file, list_files_in_folder, download_file
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from PIL import Image
 
+from scripts.utils.gdrive import (
+    delete_file,
+    download_file,
+    get_drive_service,
+    list_files,
+    load_json_file,
+    save_json_file,
+)
+
 logger = logging.getLogger(__name__)
 
-def _get_used_memes_gdrive(service, folder_id: str) -> set[str]:
-    if not service or not folder_id:
-        return set()
-    data = download_json_file(service, folder_id, "used_memes.json")
-    if data and isinstance(data, list):
-        return set(data)
-    return set()
+# Subreddits to pull from — shuffled each run for variety
+_SUBREDDITS = [
+    "dankmemes", "memes", "shitposting", "me_irl", "funny",
+    "memeeconomy", "historymemes", "AdviceAnimals",
+    "ProgrammerHumor", "surrealmemes", "SpecialSnowflake",
+    "bonehurtingjuice", "okbuddyretard",
+]
 
-def _save_used_meme_gdrive(service, folder_id: str, url: str):
-    if not service or not folder_id:
-        return
-    used = _get_used_memes_gdrive(service, folder_id)
-    used.add(url)
-    upload_json_file(service, folder_id, "used_memes.json", list(used))
+# Only block hard ToS violations — dark humour is allowed
+_BANNED = {"porn", "nude", "nsfw", "rape", "cp", "suicide", "selfharm"}
 
-def _fetch_from_gdrive(service, folder_id: str, dest_dir: pathlib.Path) -> dict:
-    files = list_files_in_folder(service, folder_id, mime_type_prefix="image/")
-    if not files:
+_STATE_FILE = "custom_meme_state.json"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _is_safe(title: str, nsfw: bool, spoiler: bool) -> bool:
+    if nsfw or spoiler:
+        return False
+    tl = title.lower()
+    return not any(b in tl for b in _BANNED)
+
+
+def _download_image(url: str, dest: pathlib.Path) -> str | None:
+    try:
+        r = requests.get(url, timeout=30, verify=False)
+        r.raise_for_status()
+        # Reject images that are too tall (portrait screenshots / stories)
+        with Image.open(io.BytesIO(r.content)) as img:
+            w, h = img.size
+            if w == 0 or h / w > 2.0:
+                return None
+        dest.write_bytes(r.content)
+        return str(dest)
+    except Exception as exc:
+        logger.debug("Image download failed (%s): %s", url, exc)
         return None
-        
-    # Pick a random custom meme
-    file = random.choice(files)
-    file_id = file['id']
-    file_name = file['name']
-    
-    filename = f"meme_{uuid.uuid4().hex[:6]}.jpg"
-    image_path = dest_dir / filename
-    
-    logger.info(f"Downloading custom meme from Drive: {file_name}")
-    if download_file(service, file_id, str(image_path)):
-        return {
-            "id": 1,
-            "narration": "Custom Meme",
-            "visual_type": "image",
-            "visual_content": "Custom Meme",
-            "image_needed": False,
-            "image_query": "",
-            "image_path": str(image_path),
-            "pause_after": 8.0,
-            "gdrive_meme_id": file_id # We will delete this later
-        }
-    return None
 
-def _fetch_from_internet(dest_dir: pathlib.Path, used_memes: set) -> dict:
-    subreddits = "dankmemes+shitposting+meme+me_irl+funny+gaming"
-    logger.info("Fetching batch of memes from meme-api.com")
-    resp = requests.get(f"https://meme-api.com/gimme/{subreddits}/20", timeout=30, verify=False)
-    resp.raise_for_status()
-    data = resp.json()
-    
-    # We allow dark humor, but block NSFW/Spoiler entirely for YouTube safety
-    memes = [m for m in data.get("memes", []) if not m.get("nsfw") and not m.get("spoiler")]
-    
-    # Only ban extreme ToS violations
-    banned_words = {"nsfw", "porn", "nude", "cp", "rape", "suicide"}
-    
-    for meme in memes:
-        image_url = meme.get("url", "")
-        title = meme.get("title", "Meme").strip()
-        title_lower = title.lower()
-        
-        if any(banned in title_lower for banned in banned_words):
-            continue
-            
-        if image_url in used_memes:
-            continue
-        
+
+# ── Custom Drive meme (once per day) ─────────────────────────────────────────
+
+def _custom_allowed_today(service, folder_id: str) -> bool:
+    state = load_json_file(service, folder_id, _STATE_FILE) or {}
+    return state.get("last_used_date") != str(datetime.date.today())
+
+
+def _mark_custom_used(service, folder_id: str):
+    save_json_file(
+        service, folder_id, _STATE_FILE,
+        {"last_used_date": str(datetime.date.today())},
+    )
+
+
+def _fetch_custom_drive(service, folder_id: str, dest_dir: pathlib.Path) -> dict | None:
+    images = [
+        f for f in list_files(service, folder_id, mime_prefix="image/")
+        if f["name"] != _STATE_FILE
+    ]
+    if not images:
+        logger.info("Custom memes folder is empty.")
+        return None
+
+    chosen = random.choice(images)
+    dest = dest_dir / f"custom_{uuid.uuid4().hex[:6]}.jpg"
+    if not download_file(service, chosen["id"], str(dest)):
+        return None
+
+    # Mark as used TODAY so the other 3 runs skip Drive
+    _mark_custom_used(service, folder_id)
+    logger.info("Using custom Drive meme: %s", chosen["name"])
+
+    return {
+        "image_path": str(dest),
+        "title": pathlib.Path(chosen["name"]).stem,
+        "source": "drive",
+        "gdrive_file_id": chosen["id"],
+    }
+
+
+# ── Internet meme (meme-api + Reddit JSON fallback) ──────────────────────────
+
+def _fetch_internet(dest_dir: pathlib.Path) -> dict | None:
+    subs = random.sample(_SUBREDDITS, min(5, len(_SUBREDDITS)))
+    query = "+".join(subs)
+
+    # Primary: meme-api.com
+    try:
+        r = requests.get(
+            f"https://meme-api.com/gimme/{query}/30",
+            timeout=20, verify=False,
+        )
+        r.raise_for_status()
+        for m in r.json().get("memes", []):
+            if not _is_safe(m.get("title", ""), m.get("nsfw", False), m.get("spoiler", False)):
+                continue
+            url = m.get("url", "")
+            if not url:
+                continue
+            path = _download_image(url, dest_dir / f"meme_{uuid.uuid4().hex[:6]}.jpg")
+            if path:
+                return {"image_path": path, "title": m.get("title", "Meme")[:80], "source": "internet"}
+    except Exception as exc:
+        logger.warning("meme-api.com failed: %s", exc)
+
+    # Fallback: direct Reddit JSON (works without API key)
+    for sub in subs:
         try:
-            img_resp = requests.get(image_url, timeout=60, verify=False)
-            img_resp.raise_for_status()
-            
-            with Image.open(io.BytesIO(img_resp.content)) as img:
-                w, h = img.size
-                if h / w > 1.8: # Reject extremely tall memes
+            r = requests.get(
+                f"https://www.reddit.com/r/{sub}/hot.json?limit=30",
+                headers={"User-Agent": "DailyFeedDrops/2.0"},
+                timeout=15, verify=False,
+            )
+            for post in r.json()["data"]["children"]:
+                d = post["data"]
+                if not _is_safe(d.get("title", ""), d.get("over_18", False), d.get("spoiler", False)):
                     continue
-                    
-            filename = f"meme_{uuid.uuid4().hex[:6]}.jpg"
-            image_path = dest_dir / filename
-            image_path.write_bytes(img_resp.content)
-            
-            return {
-                "id": 1,
-                "narration": title,
-                "visual_type": "image",
-                "visual_content": title,
-                "image_needed": False,
-                "image_query": "",
-                "image_path": str(image_path),
-                "pause_after": 8.0,
-                "url": image_url # For history tracking
-            }
-        except Exception as e:
-            logger.warning("Failed to process meme: %s", e)
-            
+                url = d.get("url", "")
+                if not url.lower().endswith((".jpg", ".jpeg", ".png")):
+                    continue
+                path = _download_image(url, dest_dir / f"meme_{uuid.uuid4().hex[:6]}.jpg")
+                if path:
+                    return {"image_path": path, "title": d.get("title", "Meme")[:80], "source": "internet"}
+        except Exception as exc:
+            logger.debug("Reddit fallback r/%s failed: %s", sub, exc)
+
     return None
 
-@retry_with_backoff(max_retries=3, delays=(2, 5, 10))
-def fetch_meme_script(dest_dir: pathlib.Path, force: bool = False) -> dict:
-    """Fetch 1 meme either from Drive or Internet and build script dict."""
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def fetch_meme(dest_dir: pathlib.Path) -> dict | None:
+    """Fetch one meme image.
+
+    Logic:
+    - Once per calendar day: check the custom Drive folder and use it if populated.
+    - All other runs (and when Drive is empty): fetch from internet meme APIs.
+    - Returns a dict with ``image_path``, ``title``, ``source``, and optionally
+      ``gdrive_file_id`` (set when a Drive meme was used — delete after delivery).
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     service = get_drive_service()
-    memes_folder_id = os.environ.get("GDRIVE_MEMES_FOLDER_ID")
-    
-    used_memes = set() if force else _get_used_memes_gdrive(service, memes_folder_id)
-    
-    segment = None
-    
-    # 50/50 Roll
-    use_drive = random.choice([True, False])
-    
-    if use_drive:
-        logger.info("50/50 Roll: Checking Google Drive for custom meme")
-        segment = _fetch_from_gdrive(service, memes_folder_id, dest_dir)
-        
-    if not segment:
-        logger.info("Fetching from Internet (Either rolled Internet, or Drive was empty/failed)")
-        segment = _fetch_from_internet(dest_dir, used_memes)
-        
-        if not segment and not use_drive:
-            # Fallback to drive if internet failed and we didn't try drive yet
-            logger.info("Internet failed. Falling back to Google Drive")
-            segment = _fetch_from_gdrive(service, memes_folder_id, dest_dir)
-            
-    if not segment:
-        raise Exception("Failed to fetch meme from both Drive and Internet.")
-        
-    # Save history if it's an internet meme
-    if "url" in segment:
-        _save_used_meme_gdrive(service, memes_folder_id, segment["url"])
+    folder_id = os.environ.get("GDRIVE_MEMES_FOLDER_ID")
 
-    title = segment.get("narration", "Meme of the Day")
-    script = {
-        "title": title[:80],
-        "description": f"😂 {title} #meme #funny #viral #shorts",
-        "tags": ["meme", "funny", "viral", "shorts", "gaming"],
-        "segments": [segment],
-    }
-    logger.info("Built meme_recap script")
-    return script
+    if service and folder_id and _custom_allowed_today(service, folder_id):
+        result = _fetch_custom_drive(service, folder_id, dest_dir)
+        if result:
+            return result
+        logger.info("Custom folder empty — falling back to internet.")
 
-def fetch_meme_script_simple() -> dict | None:
-    """Wrapper that fetches one meme without requiring a dest_dir argument."""
-    import tempfile
-    dest = pathlib.Path(tempfile.mkdtemp()) / "memes"
-    dest.mkdir(parents=True, exist_ok=True)
-    try:
-        return fetch_meme_script(dest_dir=dest)
-    except Exception as exc:
-        logger.error("fetch_meme_script_simple failed: %s", exc)
-        return None
+    logger.info("Fetching internet meme.")
+    return _fetch_internet(dest_dir)
+
+
+def delete_custom_meme_from_drive(meme: dict):
+    """Call this AFTER successful video delivery to remove the file from Drive."""
+    file_id = meme.get("gdrive_file_id")
+    if not file_id:
+        return
+    service = get_drive_service()
+    if service:
+        delete_file(service, file_id)

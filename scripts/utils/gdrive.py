@@ -1,144 +1,139 @@
-import os
+import io
 import json
 import logging
-from typing import List, Dict, Any, Optional
-import io
+import os
 import tempfile
+from typing import Any, Dict, List, Optional
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ['https://www.googleapis.com/auth/drive']
+_SCOPES = ["https://www.googleapis.com/auth/drive"]
+
 
 def get_drive_service():
-    """Authenticate and return the Google Drive service."""
-    creds_json_str = os.environ.get("GDRIVE_SERVICE_ACCOUNT_JSON")
-    if not creds_json_str:
-        logger.warning("GDRIVE_SERVICE_ACCOUNT_JSON environment variable not set.")
+    raw = os.environ.get("GDRIVE_SERVICE_ACCOUNT_JSON")
+    if not raw:
+        logger.warning("GDRIVE_SERVICE_ACCOUNT_JSON not set — Drive unavailable.")
         return None
-        
     try:
-        creds_dict = json.loads(creds_json_str)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-        return service
-    except Exception as e:
-        logger.error(f"Failed to authenticate with Google Drive: {e}")
+        info = json.loads(raw)
+        creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
+        return build("drive", "v3", credentials=creds, cache_discovery=False)
+    except Exception as exc:
+        logger.error("Drive auth failed: %s", exc)
         return None
 
-def list_files_in_folder(service, folder_id: str, mime_type_prefix: Optional[str] = None) -> List[Dict[str, Any]]:
-    """List all files in a specific Google Drive folder."""
+
+def list_files(
+    service,
+    folder_id: str,
+    mime_prefix: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     if not service or not folder_id:
         return []
-        
-    query = f"'{folder_id}' in parents and trashed = false"
-    if mime_type_prefix:
-        query += f" and mimeType contains '{mime_type_prefix}'"
-        
+    q = f"'{folder_id}' in parents and trashed=false"
+    if mime_prefix:
+        q += f" and mimeType contains '{mime_prefix}'"
     try:
-        results = service.files().list(
-            q=query,
-            pageSize=100,
-            fields="nextPageToken, files(id, name, mimeType, size)"
-        ).execute()
-        items = results.get('files', [])
-        return items
-    except Exception as e:
-        logger.error(f"Error listing files in folder {folder_id}: {e}")
+        res = (
+            service.files()
+            .list(q=q, pageSize=200, fields="files(id,name,mimeType,size)")
+            .execute()
+        )
+        return res.get("files", [])
+    except Exception as exc:
+        logger.error("list_files failed for folder %s: %s", folder_id, exc)
         return []
 
-def download_file(service, file_id: str, destination_path: str) -> bool:
-    """Download a file from Google Drive to the local filesystem."""
-    if not service or not file_id:
-        return False
-        
+
+def find_file_by_name(
+    service,
+    folder_ids: List[str],
+    filename: str,
+) -> Optional[Dict[str, Any]]:
+    for fid in folder_ids:
+        for f in list_files(service, fid):
+            if f["name"] == filename:
+                return f
+    return None
+
+
+def download_file(
+    service,
+    file_id: str,
+    dest_path: str,
+    max_bytes: Optional[int] = None,
+) -> bool:
     try:
-        request = service.files().get_media(fileId=file_id)
-        with open(destination_path, 'wb') as fh:
-            downloader = MediaIoBaseDownload(fh, request)
+        req = service.files().get_media(fileId=file_id)
+        with open(dest_path, "wb") as fh:
+            dl = MediaIoBaseDownload(fh, req, chunksize=5 * 1024 * 1024)
             done = False
-            while done is False:
-                status, done = downloader.next_chunk()
+            fetched = 0
+            while not done:
+                status, done = dl.next_chunk()
+                if status:
+                    fetched = int(status.resumable_progress or 0)
+                if max_bytes and fetched >= max_bytes:
+                    logger.info("Hit max_bytes cap (%dMB). Stopping.", max_bytes // 1_048_576)
+                    break
         return True
-    except Exception as e:
-        logger.error(f"Error downloading file {file_id}: {e}")
+    except Exception as exc:
+        logger.error("download_file %s failed: %s", file_id, exc)
         return False
+
 
 def delete_file(service, file_id: str) -> bool:
-    """Delete a file from Google Drive."""
-    if not service or not file_id:
-        return False
-        
     try:
         service.files().delete(fileId=file_id).execute()
-        logger.info(f"Successfully deleted file {file_id} from Google Drive.")
+        logger.info("Deleted Drive file %s.", file_id)
         return True
-    except Exception as e:
-        logger.error(f"Error deleting file {file_id}: {e}")
+    except Exception as exc:
+        logger.error("delete_file %s failed: %s", file_id, exc)
         return False
 
-def upload_json_file(service, folder_id: str, file_name: str, data: dict) -> str:
-    """Upload or update a JSON file in Google Drive."""
-    if not service:
+
+def load_json_file(service, folder_id: str, name: str) -> Optional[dict]:
+    files = list_files(service, folder_id)
+    target = next((f for f in files if f["name"] == name), None)
+    if not target:
         return None
-        
-    query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
     try:
-        results = service.files().list(q=query, fields="files(id)").execute()
-        items = results.get('files', [])
-        
-        # Write dict to temporary file for upload
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.json') as temp:
-            json.dump(data, temp)
-            temp_path = temp.name
-            
-        media = MediaFileUpload(temp_path, mimetype='application/json', resumable=True)
-        
-        if items:
-            # Update existing
-            file_id = items[0]['id']
-            service.files().update(fileId=file_id, media_body=media).execute()
-            os.unlink(temp_path)
-            return file_id
-        else:
-            # Create new
-            file_metadata = {
-                'name': file_name,
-                'parents': [folder_id]
-            }
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            os.unlink(temp_path)
-            return file.get('id')
-    except Exception as e:
-        logger.error(f"Error uploading json file {file_name}: {e}")
+        req = service.files().get_media(fileId=target["id"])
+        buf = io.BytesIO()
+        dl = MediaIoBaseDownload(buf, req)
+        done = False
+        while not done:
+            _, done = dl.next_chunk()
+        buf.seek(0)
+        return json.loads(buf.read().decode("utf-8"))
+    except Exception as exc:
+        logger.error("load_json_file %s failed: %s", name, exc)
         return None
 
-def download_json_file(service, folder_id: str, file_name: str) -> Optional[dict]:
-    """Download a JSON file from Google Drive and return its parsed dict."""
-    if not service:
-        return None
-        
-    query = f"'{folder_id}' in parents and name = '{file_name}' and trashed = false"
+
+def save_json_file(service, folder_id: str, name: str, data: dict) -> bool:
+    existing = next((f for f in list_files(service, folder_id) if f["name"] == name), None)
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as tmp:
+        json.dump(data, tmp)
+        tmp_path = tmp.name
     try:
-        results = service.files().list(q=query, fields="files(id)").execute()
-        items = results.get('files', [])
-        
-        if not items:
-            return None
-            
-        file_id = items[0]['id']
-        request = service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-            
-        fh.seek(0)
-        return json.loads(fh.read().decode('utf-8'))
-    except Exception as e:
-        logger.error(f"Error downloading json file {file_name}: {e}")
-        return None
+        media = MediaFileUpload(tmp_path, mimetype="application/json")
+        if existing:
+            service.files().update(fileId=existing["id"], media_body=media).execute()
+        else:
+            service.files().create(
+                body={"name": name, "parents": [folder_id]},
+                media_body=media,
+                fields="id",
+            ).execute()
+        return True
+    except Exception as exc:
+        logger.error("save_json_file %s failed: %s", name, exc)
+        return False
+    finally:
+        os.unlink(tmp_path)
