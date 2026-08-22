@@ -18,9 +18,6 @@ _FALLBACK_URLS = [
     "https://www.youtube.com/watch?v=XhxwGJaGqL8",
 ]
 
-# Max bytes to pull from Drive per video (300 MB → ~5–15 min of footage at typical bitrates)
-_MAX_DOWNLOAD_BYTES = 300 * 1024 * 1024
-
 
 def _video_duration(path: str) -> float:
     """Return decodable duration of a (possibly partial) video file in seconds."""
@@ -79,7 +76,7 @@ def _broll_from_drive(dest_dir: pathlib.Path, clip_duration: float) -> str | Non
     raw = str(dest_dir / f"raw_{uuid.uuid4().hex[:8]}.mp4")
     logger.info("Downloading Drive B-Roll: %s", chosen["name"])
 
-    if not download_file(service, chosen["id"], raw, max_bytes=_MAX_DOWNLOAD_BYTES):
+    if not download_file(service, chosen["id"], raw):
         return None
 
     available = _video_duration(raw)
