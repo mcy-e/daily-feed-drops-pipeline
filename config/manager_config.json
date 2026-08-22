@@ -19,8 +19,8 @@
             "15:00",
             "19:00"
           ],
-          "mode": "manual",
-          "privacy_status": "private",
+          "mode": "auto",
+          "privacy_status": "public",
           "weight": 100.0
         }
       ]
