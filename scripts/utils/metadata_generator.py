@@ -15,7 +15,9 @@ _EVERGREEN_POOL = [
 
 _SYSTEM_PROMPT = (
     "You are a YouTube Shorts metadata writer. "
-    "Given a meme title, return ONLY a JSON object with two fields:\n"
+    "I will give you an image of a meme (and optionally a title). "
+    "Read the text in the meme and look at the image to understand the joke. "
+    "Return ONLY a JSON object with two fields:\n"
     '  "description": a single punchy sentence (max 120 chars) that describes or reacts to the meme. '
     "Be witty, keep dark humor if the meme calls for it. Do NOT add hashtags here.\n"
     '  "hashtags": a list of exactly 4 hashtag strings (include the # symbol) that match the meme\'s theme. '
@@ -24,21 +26,29 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _call_gemini(meme_title: str) -> dict | None:
+def _call_gemini(meme_title: str, image_path: str = None) -> dict | None:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return None
 
     try:
         import google.generativeai as genai
+        import PIL.Image
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(
-            f"{_SYSTEM_PROMPT}\n\nMeme title: {meme_title}"
-        )
+        
+        prompt = [_SYSTEM_PROMPT, f"Meme title hint: {meme_title}"]
+        if image_path and os.path.exists(image_path):
+            img = PIL.Image.open(image_path)
+            prompt.append(img)
+            
+        response = model.generate_content(prompt)
         import json
-        return json.loads(response.text.strip())
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:-3].strip()
+        return json.loads(text)
     except Exception as exc:
         logger.warning("Gemini metadata generation failed: %s", exc)
         return None
@@ -85,14 +95,14 @@ def _local_fallback(meme_title: str) -> dict:
     }
 
 
-def generate_youtube_metadata(meme_title: str) -> dict:
+def generate_youtube_metadata(meme_title: str, image_path: str = None) -> dict:
     """Generate a unique description and hashtag list for a YouTube Short.
 
     Tries Gemini first, then Groq, then falls back to a local generator.
     Always returns a dict with 'description' (str) and 'hashtags' (list[str]).
     The #Shorts tag is always prepended to the hashtag list.
     """
-    result = _call_gemini(meme_title) or _call_groq(meme_title) or _local_fallback(meme_title)
+    result = _call_gemini(meme_title, image_path) or _call_groq(meme_title) or _local_fallback(meme_title)
 
     # Normalize: ensure exactly 4 non-Shorts hashtags
     hashtags = [h if h.startswith("#") else f"#{h}" for h in result.get("hashtags", [])]

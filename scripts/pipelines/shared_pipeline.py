@@ -66,7 +66,7 @@ def run_content_pipeline(content_type: str, force: bool = False):
 
         # 5. Telegram + YouTube
         title = meme["title"]
-        meta = generate_youtube_metadata(title)
+        meta = generate_youtube_metadata(title, meme.get("image_path"))
         hashtag_str = " ".join(meta["hashtags"])
         description = f"{meta['description']}\n\n{hashtag_str}"
 
