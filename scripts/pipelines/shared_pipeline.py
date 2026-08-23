@@ -63,27 +63,35 @@ def run_content_pipeline(content_type: str, force: bool = False):
         logger.info("Stage 3: Compositing Video")
         final_video = composite_meme(meme["image_path"], broll_path, run_dir / "output")
 
-        # 5. Telegram
-        logger.info("Stage 4: Telegram Delivery")
+        # 5. Telegram + YouTube
         title = meme["title"]
-        caption = f"[{content_type.replace('_', ' ').title()}] {title}\n#meme #funny #viral"
-        send_video(final_video, caption)
+        description = f"[Meme Recap] {title}\n#meme #funny #viral #shorts"
 
-        # 6. YouTube
         if not manual_mode:
             logger.info("Stage 5: YouTube Upload")
             try:
                 from scripts.upload.youtube_upload import upload_video
-                upload_video(
+                youtube_url = upload_video(
                     video_path=final_video,
                     title=title[:80],
-                    description=caption,
+                    description=description,
                     tags=["meme", "funny", "viral", "shorts", "gaming"],
                     privacy_status=privacy_status,
                 )
+                logger.info("Stage 5b: Telegram — sending YouTube link")
+                send_message(
+                    f"Video uploaded!\n\n"
+                    f"Title: {title}\n\n"
+                    f"Link: {youtube_url}\n\n"
+                    f"Description:\n{description}"
+                )
             except Exception as exc:
                 logger.error("YouTube upload failed: %s", exc)
-                send_message(f"YouTube upload FAILED: {exc}")
+                send_message(f"YouTube upload FAILED. Sending video for manual upload.\n\nTitle: {title}\n\nDescription:\n{description}")
+                send_video(final_video, description)
+        else:
+            logger.info("Stage 4: Telegram Delivery (manual mode)")
+            send_video(final_video, description)
 
         # 7. Cleanup
         logger.info("Stage 6: Cleanup Custom Memes")

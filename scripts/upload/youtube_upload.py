@@ -27,6 +27,10 @@ def upload_video(
     credentials = get_credentials()
     youtube = build("youtube", "v3", credentials=credentials)
 
+    # YouTube requires #Shorts in the title to classify the video as a Short
+    if "#Shorts" not in title and "#shorts" not in title:
+        title = f"{title} #Shorts"
+
     body = {
         "snippet": {
             "title": title,
