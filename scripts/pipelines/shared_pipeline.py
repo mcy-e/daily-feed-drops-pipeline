@@ -9,6 +9,7 @@ from scripts.generators.meme_fetcher import delete_custom_meme_from_drive, fetch
 from scripts.pipelines.schedule import is_scheduled_time, load_manager_config
 from scripts.render.assemble import composite_meme
 from scripts.notifications.telegram import send_message, send_video
+from scripts.utils.metadata_generator import generate_youtube_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,9 @@ def run_content_pipeline(content_type: str, force: bool = False):
 
         # 5. Telegram + YouTube
         title = meme["title"]
-        description = f"[Meme Recap] {title}\n#meme #funny #viral #shorts"
+        meta = generate_youtube_metadata(title)
+        hashtag_str = " ".join(meta["hashtags"])
+        description = f"{meta['description']}\n\n{hashtag_str}"
 
         if not manual_mode:
             logger.info("Stage 5: YouTube Upload")
