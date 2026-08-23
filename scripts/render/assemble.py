@@ -82,10 +82,10 @@ def composite_meme(
     ]
     
     if audio_file:
-        cmd += ["-map", "2:a"]
+        cmd += ["-map", "2:a", "-filter:a", "volume=0.25"]
     else:
         # Fallback synthetic brown noise
-        cmd += ["-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.4", "-map", "2:a"]
+        cmd += ["-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.1", "-map", "2:a"]
         
     cmd += [
         "-t", str(duration),
