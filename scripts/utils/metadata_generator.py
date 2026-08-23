@@ -51,25 +51,20 @@ def _call_groq(meme_title: str) -> dict | None:
 
     try:
         import json
-        import requests
+        from groq import Groq
 
-        payload = {
-            "model": "llama3-8b-8192",
-            "messages": [
+        client = Groq(api_key=api_key)
+        chat_completion = client.chat.completions.create(
+            messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": f"Meme title: {meme_title}"},
             ],
-            "temperature": 0.9,
-            "max_tokens": 200,
-        }
-        r = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=20,
+            model="llama3-8b-8192",
+            temperature=0.9,
+            max_tokens=200,
+            response_format={"type": "json_object"},
         )
-        r.raise_for_status()
-        raw = r.json()["choices"][0]["message"]["content"].strip()
+        raw = chat_completion.choices[0].message.content.strip()
         return json.loads(raw)
     except Exception as exc:
         logger.warning("Groq metadata generation failed: %s", exc)

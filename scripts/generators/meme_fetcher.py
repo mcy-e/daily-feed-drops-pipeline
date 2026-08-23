@@ -18,8 +18,6 @@ from scripts.utils.gdrive import (
     download_file,
     get_drive_service,
     list_files,
-    load_json_file,
-    save_json_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +45,6 @@ _SUBREDDITS = [
 # Only block hard ToS violations — dark humour is allowed
 _BANNED = {"porn", "nude", "nsfw", "rape", "cp", "suicide", "selfharm"}
 
-_STATE_FILE = "custom_meme_state.json"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -80,25 +77,10 @@ def _download_image(url: str, dest: pathlib.Path) -> str | None:
         return None
 
 
-# ── Custom Drive meme (once per day) ─────────────────────────────────────────
-
-def _custom_allowed_today(service, folder_id: str) -> bool:
-    state = load_json_file(service, folder_id, _STATE_FILE) or {}
-    return state.get("last_used_date") != str(datetime.date.today())
-
-
-def _mark_custom_used(service, folder_id: str):
-    save_json_file(
-        service, folder_id, _STATE_FILE,
-        {"last_used_date": str(datetime.date.today())},
-    )
-
+# ── Custom Drive meme (25% chance per run) ───────────────────────────────────
 
 def _fetch_custom_drive(service, folder_id: str, dest_dir: pathlib.Path) -> dict | None:
-    images = [
-        f for f in list_files(service, folder_id, mime_prefix="image/")
-        if f["name"] != _STATE_FILE
-    ]
+    images = [f for f in list_files(service, folder_id, mime_prefix="image/")]
     if not images:
         logger.info("Custom memes folder is empty.")
         return None
@@ -108,8 +90,6 @@ def _fetch_custom_drive(service, folder_id: str, dest_dir: pathlib.Path) -> dict
     if not download_file(service, chosen["id"], str(dest)):
         return None
 
-    # Mark as used TODAY so the other 3 runs skip Drive
-    _mark_custom_used(service, folder_id)
     logger.info("Using custom Drive meme: %s", chosen["name"])
 
     return {
@@ -175,7 +155,8 @@ def fetch_meme(dest_dir: pathlib.Path) -> dict | None:
     """Fetch one meme image.
 
     Logic:
-    - Once per calendar day: check the custom Drive folder and use it if populated.
+    - 25% chance per run: check the custom Drive folder and use it if populated.
+      (Since pipeline runs 4x/day, this averages to 1 custom meme per day).
     - All other runs (and when Drive is empty): fetch from internet meme APIs.
     - Returns a dict with ``image_path``, ``title``, ``source``, and optionally
       ``gdrive_file_id`` (set when a Drive meme was used — delete after delivery).
@@ -185,11 +166,12 @@ def fetch_meme(dest_dir: pathlib.Path) -> dict | None:
     service = get_drive_service()
     folder_id = os.environ.get("GDRIVE_MEMES_FOLDER_ID")
 
-    if service and folder_id and _custom_allowed_today(service, folder_id):
+    # 25% chance to attempt loading from Drive
+    if service and folder_id and random.random() < 0.25:
         result = _fetch_custom_drive(service, folder_id, dest_dir)
         if result:
             return result
-        logger.info("Custom folder empty — falling back to internet.")
+        logger.info("Custom folder empty or unavailable — falling back to internet.")
 
     logger.info("Fetching internet meme.")
     return _fetch_internet(dest_dir)
