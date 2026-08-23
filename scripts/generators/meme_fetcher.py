@@ -18,6 +18,7 @@ from scripts.utils.gdrive import (
     download_file,
     get_drive_service,
     list_files,
+    rename_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def _download_image(url: str, dest: pathlib.Path) -> str | None:
 # ── Custom Drive meme (25% chance per run) ───────────────────────────────────
 
 def _fetch_custom_drive(service, folder_id: str, dest_dir: pathlib.Path) -> dict | None:
-    images = [f for f in list_files(service, folder_id, mime_prefix="image/")]
+    images = [f for f in list_files(service, folder_id, mime_prefix="image/") if not f["name"].startswith("used_")]
     if not images:
         logger.info("Custom memes folder is empty.")
         return None
@@ -97,6 +98,7 @@ def _fetch_custom_drive(service, folder_id: str, dest_dir: pathlib.Path) -> dict
         "title": pathlib.Path(chosen["name"]).stem,
         "source": "drive",
         "gdrive_file_id": chosen["id"],
+        "original_name": chosen["name"],
     }
 
 
@@ -178,10 +180,11 @@ def fetch_meme(dest_dir: pathlib.Path) -> dict | None:
 
 
 def delete_custom_meme_from_drive(meme: dict):
-    """Call this AFTER successful video delivery to remove the file from Drive."""
+    """Call this AFTER successful video delivery to rename the file so it's skipped."""
     file_id = meme.get("gdrive_file_id")
-    if not file_id:
+    original_name = meme.get("original_name")
+    if not file_id or not original_name:
         return
     service = get_drive_service()
     if service:
-        delete_file(service, file_id)
+        rename_file(service, file_id, f"used_{original_name}")

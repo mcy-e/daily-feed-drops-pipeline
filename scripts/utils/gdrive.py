@@ -137,3 +137,11 @@ def save_json_file(service, folder_id: str, name: str, data: dict) -> bool:
         return False
     finally:
         os.unlink(tmp_path)
+def rename_file(service, file_id: str, new_name: str) -> bool:
+    try:
+        service.files().update(fileId=file_id, body={"name": new_name}).execute()
+        logger.info("Renamed Drive file %s to %s", file_id, new_name)
+        return True
+    except Exception as exc:
+        logger.error("rename_file %s failed: %s", file_id, exc)
+        return False
