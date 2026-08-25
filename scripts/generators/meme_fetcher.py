@@ -29,18 +29,6 @@ _SUBREDDITS = [
     "dankmemes", "shitposting", "HolUp", "dank_meme", "2meirl4meirl",
     "SipsTea", "Discordmemes", "Offensivejokes", "ImFinnaGoToHell",
     "cursedcomments", "meme", "memes",
-    
-    # International / Multi-language
-    "ich_iel",          # German
-    "moi_dlvv",         # French
-    "yo_elvr",          # Spanish
-    "ani_bm",           # Hebrew
-    "ik_ihe",           # Dutch
-    "eu_nvr",           # Portuguese
-    "Polska_wpz",       # Polish
-    "LatinoPeopleTwitter",
-    "MemeItaliani",
-    "memesESP",
 ]
 
 # Only block hard ToS violations — dark humour is allowed
