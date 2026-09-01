@@ -2,10 +2,11 @@ name: Run Content Pipeline
 
 on:
   schedule:
-    - cron: '0 7 * * *'   # meme_recap post 1
-    - cron: '0 11 * * *'  # meme_recap post 2
-    - cron: '0 15 * * *'  # meme_recap post 3
-    - cron: '0 19 * * *'  # meme_recap post 4
+    - cron: '0 7 * * *'
+    - cron: '32 11 * * *'
+    - cron: '40 14 * * *'
+    - cron: '30 19 * * *'
+    - cron: '50 23 * * *'
   workflow_dispatch:
     inputs:
       content_type:
