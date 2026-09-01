@@ -27,14 +27,14 @@ def _is_safe(title: str, nsfw: bool, spoiler: bool) -> bool:
 
 
 def _fetch_top_comment(sub: str, post_id: str) -> str | None:
-    url = f"https://www.reddit.com/r/{sub}/comments/{post_id}.json?limit=5"
+    url = f"https://api.pullpush.io/reddit/search/comment/?link_id={post_id}&sort=desc&sort_type=score&size=5"
     try:
         r = requests.get(url, headers=_HEADERS, timeout=15, verify=False)
         r.raise_for_status()
         data = r.json()
-        comments = data[1]["data"]["children"]
+        comments = data.get("data", [])
         for comment in comments:
-            body = comment["data"].get("body", "").strip()
+            body = comment.get("body", "").strip()
             if body and body not in ("[deleted]", "[removed]") and len(body) > 5:
                 return body[:300]
     except Exception as exc:
@@ -46,15 +46,14 @@ def _fetch_from_subreddit(sub: str) -> list[dict]:
     results = []
     try:
         r = requests.get(
-            f"https://www.reddit.com/r/{sub}/hot.json?limit={_REQUEST_LIMIT}",
+            f"https://api.pullpush.io/reddit/search/submission/?subreddit={sub}&sort=desc&sort_type=score&size={_REQUEST_LIMIT}",
             headers=_HEADERS,
             timeout=15,
             verify=False,
         )
         r.raise_for_status()
-        posts = r.json()["data"]["children"]
-        for post in posts:
-            d = post["data"]
+        posts = r.json().get("data", [])
+        for d in posts:
             title = d.get("title", "")
             if not _is_safe(title, d.get("over_18", False), d.get("spoiler", False)):
                 continue
