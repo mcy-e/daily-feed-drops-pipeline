@@ -13,7 +13,7 @@ from scripts.utils.metadata_generator import generate_youtube_metadata
 
 logger = logging.getLogger(__name__)
 
-CONTENT_TYPES = ("meme_recap",)
+CONTENT_TYPES = ("meme_recap", "cursed_screenshots")
 
 def run_content_pipeline(content_type: str, force: bool = False):
     logger.info("=" * 50)
