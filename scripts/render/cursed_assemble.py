@@ -65,11 +65,18 @@ def _render_segment(
 
     cmd.extend(["-i", audio_path])
     
-    # Escape single quotes and colons for drawtext
-    escaped_text = text_content.replace("'", "\\'").replace(":", "\\:")
-    
+    # Use textfile instead of inline text to completely bypass FFmpeg quote escaping hell
+    txt_path = dest_path + ".txt"
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(text_content)
+        
+    # Convert windows paths for FFmpeg filter format if necessary
+    safe_txt_path = txt_path.replace('\\', '/')
+    if platform.system() == "Windows" and safe_txt_path[1] == ':':
+        safe_txt_path = safe_txt_path[0] + "\\\\:" + safe_txt_path[2:]
+        
     drawtext_filter = (
-        f"drawtext=fontfile='{_FONT_PATH}':text='{escaped_text}':"
+        f"drawtext=fontfile='{_FONT_PATH}':textfile='{safe_txt_path}':"
         f"fontcolor=white:fontsize=52:box=1:boxcolor=black@0.6:boxborderw=10:"
         f"x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black:shadowx=2:shadowy=2:borderw=1:"
         f"fix_bounds=true"
