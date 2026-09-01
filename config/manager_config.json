@@ -14,15 +14,26 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "07:00",
-            "11:32",
-            "14:40",
-            "19:30",
-            "23:50"
+            "12:21"
           ],
-          "mode": "auto",
-          "privacy_status": "public",
-          "weight": 100.0
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 50.0
+        },
+        {
+          "id": 3,
+          "name": "shower_thoughts",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [
+            "08:14"
+          ],
+          "mode": "manual",
+          "privacy_status": "private",
+          "weight": 50.0
         }
       ]
     }
