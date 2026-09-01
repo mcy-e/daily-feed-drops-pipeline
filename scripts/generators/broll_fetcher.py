@@ -114,26 +114,64 @@ def _broll_from_youtube(dest_dir: pathlib.Path, clip_duration: float) -> str | N
     raw = str(dest_dir / f"yt_{uuid.uuid4().hex[:8]}.mp4")
 
     logger.info("Downloading YouTube B-Roll (start=%ds): %s", start_sec, url)
-    cmd = [
+
+    # Preferred: fast section download via --download-sections
+    cmd_sections = [
         "yt-dlp", "--force-ipv4",
         "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
         "--download-sections", f"*{start_sec}-{start_sec + int(clip_duration) + 10}",
-        "--output", raw,
         "--force-keyframes-at-cuts",
+        "--no-playlist",
+        "--output", raw,
         url,
     ]
+
+    # Fallback: download full video then crop with ffmpeg seek
+    cmd_full = [
+        "yt-dlp", "--force-ipv4",
+        "--format", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+        "--no-playlist",
+        "--output", raw,
+        url,
+    ]
+
+    success = False
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as exc:
-        logger.error("yt-dlp failed: %s", exc.stderr[-400:])
+        result = subprocess.run(cmd_sections, capture_output=True, text=True, timeout=120)
+        if result.returncode == 0 and pathlib.Path(raw).exists():
+            success = True
+        else:
+            logger.warning("yt-dlp sections download failed (%d). Trying full download.", result.returncode)
+    except Exception as exc:
+        logger.warning("yt-dlp sections attempt raised: %s", exc)
+
+    if not success:
+        try:
+            result = subprocess.run(cmd_full, capture_output=True, text=True, timeout=240)
+            if result.returncode == 0 and pathlib.Path(raw).exists():
+                success = True
+            else:
+                logger.error("yt-dlp full download also failed: %s", result.stderr[-300:])
+                return None
+        except Exception as exc:
+            logger.error("yt-dlp full download raised: %s", exc)
+            return None
+
+    available = _video_duration(raw)
+    if available < clip_duration + 2:
+        logger.warning("Downloaded clip too short (%.1fs). Discarding.", available)
+        pathlib.Path(raw).unlink(missing_ok=True)
         return None
 
+    seek_start = min(float(start_sec), max(0, available - clip_duration - 2))
     out = str(dest_dir / f"broll_yt_{uuid.uuid4().hex[:8]}.mp4")
-    if _crop_and_scale(raw, 0, clip_duration, out):
+    if _crop_and_scale(raw, seek_start, clip_duration, out):
         pathlib.Path(raw).unlink(missing_ok=True)
         return out
 
+    pathlib.Path(raw).unlink(missing_ok=True)
     return None
+
 
 
 def _black_fallback(dest_dir: pathlib.Path, clip_duration: float) -> str:
