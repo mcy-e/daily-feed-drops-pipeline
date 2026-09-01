@@ -22,7 +22,20 @@
           ],
           "mode": "auto",
           "privacy_status": "public",
-          "weight": 100.0
+          "weight": 50.0
+        },
+        {
+          "id": 2,
+          "name": "cursed_screenshots",
+          "api_key": null,
+          "source_url": null,
+          "automation_endpoint": null,
+          "github_repo": "mcy-e/daily-feed-drops-pipeline",
+          "github_workflow": "run-content.yml",
+          "schedule": [],
+          "mode": "auto",
+          "privacy_status": "public",
+          "weight": 50.0
         }
       ]
     }
