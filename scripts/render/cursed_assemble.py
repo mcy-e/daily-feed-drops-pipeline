@@ -16,7 +16,12 @@ _PUNCHLINE_VOICE = "en-US-BrianNeural"
 _PUNCHLINE_RATE = "-15%"
 _PUNCHLINE_PITCH = "-20Hz"
 
-_FONT_PATH = "C\\\\:/Windows/Fonts/arialbd.ttf"  # Assuming Windows Arial Bold
+import platform
+if platform.system() == "Windows":
+    _FONT_PATH = "C\\\\:/Windows/Fonts/arialbd.ttf"
+else:
+    _FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
 _SILENCE_DUR = 1.5
 
 
