@@ -81,7 +81,7 @@ def _fetch_from_subreddit(sub: str) -> list[dict]:
 def _fetch_from_bank() -> list[dict]:
     """Load items from the local content bank when all network sources fail."""
     try:
-        with open(_BANK_PATH, "r", encoding="utf-8") as f:
+        with open(_BANK_PATH, "r", encoding="utf-8-sig") as f:
             bank = json.load(f)
         items = [
             {
