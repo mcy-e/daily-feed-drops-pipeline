@@ -8,8 +8,10 @@ from scripts.utils.gdrive import download_file, find_file_by_name, get_drive_ser
 
 logger = logging.getLogger(__name__)
 
-def _fetch_night_sound(dest: pathlib.Path) -> str | None:
-    """Fetch 'night_sound.mp3' from any configured Drive folder."""
+import random
+
+def _fetch_ambient_sound(dest: pathlib.Path) -> str | None:
+    """Fetch an ambient sound ('night_sound.mp3' or 'void.mp3') from Drive."""
     service = get_drive_service()
     if not service:
         return None
@@ -20,9 +22,11 @@ def _fetch_night_sound(dest: pathlib.Path) -> str | None:
     if os.environ.get("GDRIVE_MEMES_FOLDER_ID"):
         folders.append(os.environ.get("GDRIVE_MEMES_FOLDER_ID"))
 
-    target = find_file_by_name(service, folders, "night_sound.mp3")
+    sound_choice = random.choice(["night_sound.mp3", "void.mp3"])
+    target = find_file_by_name(service, folders, sound_choice)
+    
     if not target:
-        logger.warning("night_sound.mp3 not found in Drive. Will use silent/ambient fallback.")
+        logger.warning(f"{sound_choice} not found in Drive. Will use silent/ambient fallback.")
         return None
 
     out = str(dest)
@@ -36,12 +40,12 @@ def composite_meme(
     broll_path: str,
     output_dir: pathlib.Path,
 ) -> str:
-    """Composite the meme image onto the B-Roll with night_sound.mp3."""
+    """Composite the meme image onto the B-Roll with ambient sound."""
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = str(output_dir / f"final_{uuid.uuid4().hex[:8]}.mp4")
     
     # 1. Fetch Audio
-    audio_file = _fetch_night_sound(output_dir / "night_sound.mp3")
+    audio_file = _fetch_ambient_sound(output_dir / "ambient.mp3")
     
     # 2. Get B-roll duration
     dur_cmd = [
