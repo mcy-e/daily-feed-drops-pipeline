@@ -1,4 +1,6 @@
+import json
 import logging
+import pathlib
 import random
 
 import requests
@@ -16,6 +18,7 @@ _HEADERS = {"User-Agent": "DailyFeedDrops/2.0"}
 
 _TARGET_COUNT = 15
 _REQUEST_LIMIT = 30
+_BANK_PATH = pathlib.Path(__file__).parent.parent / "data" / "cursed_bank.json"
 
 
 def _is_safe(title: str, nsfw: bool, spoiler: bool) -> bool:
@@ -128,8 +131,35 @@ def _fetch_from_subreddit(sub: str) -> list[dict]:
     return results
 
 
+def _fetch_from_bank() -> list[dict]:
+    """Load items from the local content bank when all network sources fail."""
+    try:
+        with open(_BANK_PATH, "r", encoding="utf-8") as f:
+            bank = json.load(f)
+        items = [
+            {
+                "setup": entry["setup"],
+                "punchline": entry["punchline"],
+                "image_url": None,
+                "post_id": f"bank_{i}",
+                "subreddit": "bank",
+            }
+            for i, entry in enumerate(bank)
+        ]
+        random.shuffle(items)
+        logger.info("Loaded %d items from local content bank", len(items))
+        return items
+    except Exception as exc:
+        logger.error("Failed to load local content bank: %s", exc)
+        return []
+
+
 def fetch_cursed_items() -> list[dict]:
-    """Fetch cursed posts with setup+punchline across configured subreddits."""
+    """Fetch cursed posts with setup+punchline.
+
+    Priority: Reddit → PullPush fallback → local content bank.
+    The local bank guarantees the pipeline never aborts from network failure.
+    """
     all_items = []
     shuffled = list(_SUBREDDITS)
     random.shuffle(shuffled)
@@ -139,6 +169,11 @@ def fetch_cursed_items() -> list[dict]:
         logger.info("Fetched %d items from r/%s", len(items), sub)
         if len(all_items) >= _TARGET_COUNT:
             break
+
+    if not all_items:
+        logger.warning("All network sources returned 0 items — using local content bank")
+        all_items = _fetch_from_bank()
+
     random.shuffle(all_items)
     logger.info("Total cursed items fetched: %d", len(all_items))
     return all_items[:_TARGET_COUNT]
