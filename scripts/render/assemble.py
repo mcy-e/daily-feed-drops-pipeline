@@ -75,9 +75,10 @@ def composite_meme(
         cmd += ["-stream_loop", "-1", "-i", audio_file]
         
     # Scale image to 850px max width/height to fit nicely on screen
+    # Add a slow upward drift (y=250 - t*8) to give it motion
     filter_complex = (
         "[1:v]scale=850:850:force_original_aspect_ratio=decrease[meme];"
-        "[0:v][meme]overlay=(W-w)/2:250:format=auto[outv]"
+        "[0:v][meme]overlay=(W-w)/2:'250-t*8':format=auto[outv]"
     )
     
     cmd += [

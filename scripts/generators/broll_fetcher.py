@@ -10,12 +10,20 @@ from scripts.utils.gdrive import download_file, get_drive_service, list_files
 logger = logging.getLogger(__name__)
 
 # Fallback YouTube gaming videos if Drive is empty
-_FALLBACK_URLS = [
+_GAMING_URLS = [
     "https://www.youtube.com/watch?v=n_Dv4JMmAO8",
     "https://www.youtube.com/watch?v=aHkLqNn_2dM",
     "https://www.youtube.com/watch?v=f2nNnJgA-tY",
     "https://www.youtube.com/watch?v=Wji-BZ0oC1w",
     "https://www.youtube.com/watch?v=XhxwGJaGqL8",
+]
+
+# Fallback IRL videos (walking, ocean, space, nature)
+_IRL_URLS = [
+    "https://www.youtube.com/watch?v=1La4QzGeaaQ", # 4K HDR walking
+    "https://www.youtube.com/watch?v=68T0j-3O3Xo", # Space timelapse
+    "https://www.youtube.com/watch?v=Xn8jEwbKcsQ", # Ocean waves
+    "https://www.youtube.com/watch?v=Qx4m76kG0J0", # Forest walking
 ]
 
 
@@ -100,7 +108,8 @@ def _broll_from_drive(dest_dir: pathlib.Path, clip_duration: float) -> str | Non
 
 
 def _broll_from_youtube(dest_dir: pathlib.Path, clip_duration: float) -> str | None:
-    url = random.choice(_FALLBACK_URLS)
+    pool = _GAMING_URLS + _IRL_URLS
+    url = random.choice(pool)
     start_sec = random.randint(300, 2700)
     raw = str(dest_dir / f"yt_{uuid.uuid4().hex[:8]}.mp4")
 

@@ -49,8 +49,10 @@ def run_content_pipeline(content_type: str, force: bool = False):
             return
 
         # 2. Determine Duration
-        duration = random.uniform(8.0, 15.0)
-        logger.info(f"Meme duration set to {duration:.1f}s")
+        title = meme.get("title", "")
+        calculated_duration = 4.0 + (len(title) / 10.0)
+        duration = max(6.0, min(14.0, calculated_duration))
+        logger.info(f"Meme duration set to {duration:.1f}s (based on title length {len(title)})")
 
         # 3. Fetch B-Roll
         logger.info("Stage 2: Fetching B-Roll")
