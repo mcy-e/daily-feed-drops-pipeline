@@ -87,8 +87,8 @@ def composite_meme(
     ]
     
     if audio_file:
-        # Lower volume to 25% and fade out in the last 1.5s to hide loop cut
-        audio_filter = f"volume=0.25,afade=t=out:st={max(0, duration - 1.5):.3f}:d=1.5"
+        # Lower volume significantly (was 0.25) and fade out in the last 1.5s
+        audio_filter = f"volume=0.1,afade=t=out:st={max(0, duration - 1.5):.3f}:d=1.5"
         cmd += ["-map", "2:a", "-filter:a", audio_filter]
     else:
         # Fallback synthetic brown noise at low volume
