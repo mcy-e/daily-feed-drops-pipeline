@@ -136,6 +136,27 @@ def _fetch_internet(dest_dir: pathlib.Path) -> dict | None:
         except Exception as exc:
             logger.debug("Reddit fallback r/%s failed: %s", sub, exc)
 
+    # Second fallback: PullPush archive (bypasses datacenter IP blocks Reddit imposes)
+    for sub in subs:
+        try:
+            r = requests.get(
+                f"https://api.pullpush.io/reddit/search/submission/?subreddit={sub}&sort=desc&sort_type=score&size=30",
+                headers={"User-Agent": "DailyFeedDrops/2.0"},
+                timeout=15, verify=False,
+            )
+            r.raise_for_status()
+            for d in r.json().get("data", []):
+                if not _is_safe(d.get("title", ""), d.get("over_18", False), d.get("spoiler", False)):
+                    continue
+                url = d.get("url", "")
+                if not url.lower().endswith((".jpg", ".jpeg", ".png")):
+                    continue
+                path = _download_image(url, dest_dir / f"meme_{uuid.uuid4().hex[:6]}.jpg")
+                if path:
+                    return {"image_path": path, "title": d.get("title", "Meme")[:80], "source": "internet"}
+        except Exception as exc:
+            logger.debug("PullPush fallback r/%s failed: %s", sub, exc)
+
     return None
 
 
