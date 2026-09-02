@@ -44,18 +44,21 @@ def _schedule_slots_for_type(config: dict, content_type: str) -> list[str]:
         logger.warning("Invalid schedules section in manager config (expected object)")
         return []
 
-    slots = schedules.get(content_type, [])
-    if isinstance(slots, str):
-        return [slots]
-    if isinstance(slots, list):
-        return slots
+    raw_slots = schedules.get(content_type, [])
+    parsed_slots = []
 
-    logger.warning(
-        "Invalid schedule format for %s (expected list of HH:MM strings): %r",
-        content_type,
-        slots,
-    )
-    return []
+    if isinstance(raw_slots, str):
+        for item in raw_slots.split(","):
+            if item.strip():
+                parsed_slots.append(item.strip())
+    elif isinstance(raw_slots, list):
+        for s in raw_slots:
+            if isinstance(s, str):
+                for item in s.split(","):
+                    if item.strip():
+                        parsed_slots.append(item.strip())
+
+    return parsed_slots
 
 
 def is_scheduled_time(
