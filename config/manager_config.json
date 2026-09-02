@@ -14,11 +14,11 @@
           "github_repo": "mcy-e/daily-feed-drops-pipeline",
           "github_workflow": "run-content.yml",
           "schedule": [
-            "08:00",
-            "12:32",
-            "15:40",
-            "20:30",
-            "00:50"
+            "08:07",
+            "12:37",
+            "15:43",
+            "20:33",
+            "00:53"
           ],
           "mode": "auto",
           "privacy_status": "public",

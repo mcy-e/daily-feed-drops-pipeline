@@ -2,15 +2,15 @@ name: Run Content Pipeline
 
 on:
   schedule:
-    # meme_recap — 5 times daily
-    - cron: '0 7 * * *'
-    - cron: '32 11 * * *'
-    - cron: '40 14 * * *'
-    - cron: '30 19 * * *'
-    - cron: '50 23 * * *'
-    # cursed_screenshots — Monday and Thursday at 19:00 UTC
-    - cron: '0 19 * * 1'
-    - cron: '0 19 * * 4'
+    # meme_recap — 5 times daily (odd minutes avoid GitHub scheduler drops)
+    - cron: '7 7 * * *'
+    - cron: '37 11 * * *'
+    - cron: '43 14 * * *'
+    - cron: '33 19 * * *'
+    - cron: '53 23 * * *'
+    # cursed_screenshots — Monday and Thursday at 19:04 UTC
+    - cron: '4 19 * * 1'
+    - cron: '4 19 * * 4'
   workflow_dispatch:
     inputs:
       content_type:
