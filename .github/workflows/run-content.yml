@@ -8,9 +8,6 @@ on:
     - cron: '43 14 * * *'
     - cron: '33 19 * * *'
     - cron: '53 23 * * *'
-    # cursed_screenshots — Monday and Thursday at 19:04 UTC
-    - cron: '4 19 * * 1'
-    - cron: '4 19 * * 4'
   workflow_dispatch:
     inputs:
       content_type:
@@ -19,7 +16,6 @@ on:
         type: choice
         options:
           - meme_recap
-          - cursed_screenshots
       force:
         description: 'Force run (bypass schedule check)'
         required: false
@@ -84,17 +80,5 @@ jobs:
               --type "${{ inputs.content_type }}" \
               ${{ (inputs.force == true || inputs.force == 'true') && '--force' || '' }}
           else
-            # Scheduled run: pick type based on day of week
-            # Day 1 = Monday, Day 4 = Thursday → cursed_screenshots
-            DOW=$(date +%u)
-            HOUR=$(date +%H)
-            if [ "$DOW" = "1" ] || [ "$DOW" = "4" ]; then
-              if [ "$HOUR" = "19" ]; then
-                python -m scripts.run_content_pipeline --type "cursed_screenshots" --force
-              else
-                python -m scripts.run_content_pipeline --type "meme_recap" --force
-              fi
-            else
-              python -m scripts.run_content_pipeline --type "meme_recap" --force
-            fi
+            python -m scripts.run_content_pipeline --type "meme_recap" --force
           fi

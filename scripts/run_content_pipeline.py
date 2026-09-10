@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ALL_CONTENT_TYPES = ("meme_recap", "cursed_screenshots")
+ALL_CONTENT_TYPES = ("meme_recap",)
 
 
 def main():
@@ -31,11 +31,7 @@ def main():
 
     force = args.force or os.getenv("FORCE_RUN", "").lower() == "true"
 
-    if args.type == "cursed_screenshots":
-        from scripts.pipelines.cursed_pipeline import run_cursed_pipeline
-        run_cursed_pipeline(force=force)
-    else:
-        run_content_pipeline(args.type, force=force)
+    run_content_pipeline(args.type, force=force)
 
 
 if __name__ == "__main__":
