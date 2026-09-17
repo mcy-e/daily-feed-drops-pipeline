@@ -95,6 +95,7 @@ def composite_meme(
         cmd += ["-f", "lavfi", "-i", "anoisesrc=c=brown:r=44100:a=0.1", "-map", "2:a"]
         
     cmd += [
+        "-loglevel", "error",
         "-t", str(duration),
         "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-shortest",

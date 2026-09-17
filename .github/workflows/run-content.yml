@@ -80,5 +80,5 @@ jobs:
               --type "${{ inputs.content_type }}" \
               ${{ (inputs.force == true || inputs.force == 'true') && '--force' || '' }}
           else
-            python -m scripts.run_content_pipeline --type "meme_recap" --force
+            python -m scripts.run_content_pipeline --type "meme_recap"
           fi

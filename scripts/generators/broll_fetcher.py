@@ -49,6 +49,7 @@ def _crop_and_scale(src: str, start: float, duration: float, dest: str) -> bool:
     """Crop a random section and scale to 1080x1920 portrait. No audio output."""
     cmd = [
         "ffmpeg", "-y",
+        "-loglevel", "error",
         "-ss", str(round(start, 3)),
         "-i", src,
         "-t", str(round(duration, 3)),
@@ -117,7 +118,7 @@ def _broll_from_youtube(dest_dir: pathlib.Path, clip_duration: float) -> str | N
 
     # Preferred: fast section download via --download-sections
     cmd_sections = [
-        "yt-dlp", "--force-ipv4",
+        "yt-dlp", "--force-ipv4", "--quiet", "--no-warnings",
         "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
         "--download-sections", f"*{start_sec}-{start_sec + int(clip_duration) + 10}",
         "--force-keyframes-at-cuts",
@@ -128,7 +129,7 @@ def _broll_from_youtube(dest_dir: pathlib.Path, clip_duration: float) -> str | N
 
     # Fallback: download full video then crop with ffmpeg seek
     cmd_full = [
-        "yt-dlp", "--force-ipv4",
+        "yt-dlp", "--force-ipv4", "--quiet", "--no-warnings",
         "--format", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
         "--no-playlist",
         "--output", raw,
