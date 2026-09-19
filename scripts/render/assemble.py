@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 import random
 
-def _fetch_ambient_sound(dest: pathlib.Path) -> str | None:
+def _fetch_ambient_sound(dest: pathlib.Path) -> tuple[str | None, str | None]:
     """Fetch an ambient sound ('night_sound.mp3' or 'void.mp3') from Drive."""
     service = get_drive_service()
     if not service:
-        return None
+        return None, None
 
     folders = []
     if os.environ.get("GDRIVE_BROLL_FOLDER_ID"):
@@ -27,12 +27,12 @@ def _fetch_ambient_sound(dest: pathlib.Path) -> str | None:
     
     if not target:
         logger.warning(f"{sound_choice} not found in Drive. Will use silent/ambient fallback.")
-        return None
+        return None, None
 
     out = str(dest)
     if download_file(service, target["id"], out):
-        return out
-    return None
+        return out, sound_choice
+    return None, None
 
 
 def composite_meme(
@@ -45,7 +45,7 @@ def composite_meme(
     out_path = str(output_dir / f"final_{uuid.uuid4().hex[:8]}.mp4")
     
     # 1. Fetch Audio
-    audio_file = _fetch_ambient_sound(output_dir / "ambient.mp3")
+    audio_file, audio_name = _fetch_ambient_sound(output_dir / "ambient.mp3")
     
     # 2. Get B-roll duration
     dur_cmd = [
@@ -87,8 +87,9 @@ def composite_meme(
     ]
     
     if audio_file:
-        # Lower volume significantly (was 0.25) and fade out in the last 1.5s
-        audio_filter = f"volume=0.1,afade=t=out:st={max(0, duration - 1.5):.3f}:d=1.5"
+        # void.mp3 gets half volume (0.5), other sounds get full volume (1.0)
+        base_vol = 0.5 if audio_name == "void.mp3" else 1.0
+        audio_filter = f"volume={base_vol},afade=t=out:st={max(0, duration - 1.5):.3f}:d=1.5"
         cmd += ["-map", "2:a", "-filter:a", audio_filter]
     else:
         # Fallback synthetic brown noise at low volume
