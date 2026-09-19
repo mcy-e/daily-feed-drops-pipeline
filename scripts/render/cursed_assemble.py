@@ -92,7 +92,7 @@ def _render_segment(
         "-map", "1:a",
         "-t", str(duration),
         "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-shortest",
+        "-c:a", "aac", "-b:a", "128k",
         dest_path
     ])
     

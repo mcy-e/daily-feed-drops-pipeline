@@ -98,7 +98,7 @@ def composite_meme(
         "-loglevel", "error",
         "-t", str(duration),
         "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-shortest",
+        "-c:a", "aac", "-b:a", "128k",
         out_path
     ]
     
